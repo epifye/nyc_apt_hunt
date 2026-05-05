@@ -76,8 +76,8 @@ interface SubwayData {
 
 async function fetchSubwayData(): Promise<SubwayData> {
   const [stationsRes, linesRes] = await Promise.all([
-    fetch('/subway_stations.geojson'),
-    fetch('/subway_lines.geojson'),
+    fetch(`${import.meta.env.BASE_URL}subway_stations.geojson`),
+    fetch(`${import.meta.env.BASE_URL}subway_lines.geojson`),
   ]);
 
   if (!stationsRes.ok) throw new Error(`Failed to load subway stations: ${stationsRes.status}`);
