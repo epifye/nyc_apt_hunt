@@ -1,0 +1,46 @@
+I want you to create a web app for nyc apartment hunting.
+I'm pulling a lot of apartments I want to tour and it will be great to have all of that organized.
+
+Here's what I'd like to have on the web app.
+First, I'd like to be add an apartment i'm looking at.
+Then I paste the address, to which you will extract which part of the city its from (lower east, upper west, Lennox hill, etc...) AND you will also add it to a map view so I can see all of the apartments I'm looking into.
+
+Also create a tracker for touring each apartment. Allow me to enter an upcoming tour (eastern standard time) and to provide the status of if I"ve toured, upcoming, or not heard from broker yet.
+
+There should be two views, one is a map view where I can see all the apts I've added and another view is the list view where I can sort the apartments by different features.
+
+WHen adding an apartment allow me to filling in Bedroom/Studio, laundry in building, monthly cost, sunlight meter (0-10), kitchen usable meter (0-10), and maybe more I can think of later.
+
+Aditionally, on the map screen lets overlay or bake into the map the MTA subway routes and their stations.
+
+Map View
+
+- Dark CartoDB basemap of NYC centered on Manhattan
+- MTA subway lines in official route colors (red=1/2/3, green=4/5/6, blue=A/C/E, etc.) fetched from NYC Open Data and cached for 24h
+- Subway station markers with hover tooltips showing station name and lines
+- Apartment pins colored by tour status (red=not contacted, blue=upcoming, green=toured)
+- Click any pin → detail panel slides in top-right with full info, edit/delete buttons
+- Toggle to show/hide the subway overlay
+
+List View
+
+- Cards grid showing all apartments
+- Sort by: rent, sunlight, kitchen, tour date, neighborhood, date added
+- Filter by tour status
+- Inline delete confirmation (no accidental deletes)
+
+Add/Edit Apartment
+
+- Paste address → click "Find" to geocode via Nominatim (free, no API key needed) and extract the neighborhood
+- Neighborhood is editable if the auto-detection is off
+- Sliders for sunlight (0-10) and kitchen usability (0-10)
+- Tour status with EST date/time picker when "Upcoming" is selected
+- Optional listing URL and notes
+- Edit reuses the same form pre-filled
+
+Everything persists in localStorage so your data survives page refreshes.
+
+Street easy and redfin link import
+email tracking
+calender
+claude --resume 6eec7318-9b9b-4cff-8cec-248c79598e45

@@ -1,0 +1,426 @@
+import { useEffect, useState, useRef } from 'react';
+import { MapContainer, TileLayer, GeoJSON, CircleMarker, Marker, Tooltip, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import {
+  X,
+  ExternalLink,
+  Pencil,
+  Trash2,
+  Sun,
+  UtensilsCrossed,
+  WashingMachine,
+  CalendarClock,
+  Loader2,
+  Layers,
+} from 'lucide-react';
+import { Apartment, TourStatus } from '../types';
+
+// ── MTA subway line colors ────────────────────────────────────────────────────
+
+const MTA_COLORS: Record<string, string> = {
+  '1': '#EE352E', '2': '#EE352E', '3': '#EE352E',
+  '4': '#00933C', '5': '#00933C', '6': '#00933C',
+  '7': '#B933AD',
+  'A': '#0039A6', 'C': '#0039A6', 'E': '#0039A6',
+  'B': '#FF6319', 'D': '#FF6319', 'F': '#FF6319', 'M': '#FF6319',
+  'G': '#6CBE45',
+  'J': '#996633', 'Z': '#996633',
+  'L': '#A7A9AC',
+  'N': '#FCCC0A', 'Q': '#FCCC0A', 'R': '#FCCC0A', 'W': '#FCCC0A',
+  'S': '#808183',
+};
+
+function getLineColor(name: string): string {
+  const first = (name || '').replace(/\s/g, '').toUpperCase()[0];
+  return MTA_COLORS[first] ?? '#808183';
+}
+
+// ── Apartment markers ─────────────────────────────────────────────────────────
+
+const STATUS_COLORS: Record<TourStatus, string> = {
+  not_contacted: '#C53030',
+  upcoming: '#1D57D8',
+  toured: '#16803A',
+};
+
+function createApartmentIcon(status: TourStatus): L.DivIcon {
+  const color = STATUS_COLORS[status];
+  const svg = `<svg width="28" height="40" viewBox="0 0 28 40" xmlns="http://www.w3.org/2000/svg" class="apt-marker-pin">
+    <path d="M14 0C6.268 0 0 6.268 0 14c0 10.5 14 28 14 28S28 24.5 28 14C28 6.268 21.732 0 14 0z"
+      fill="${color}" stroke="white" stroke-width="2.5"/>
+    <circle cx="14" cy="14" r="5.5" fill="white" opacity="0.95"/>
+  </svg>`;
+  return L.divIcon({
+    className: '',
+    html: svg,
+    iconSize: [28, 40],
+    iconAnchor: [14, 40],
+    popupAnchor: [0, -44],
+  });
+}
+
+// ── Subway data types ─────────────────────────────────────────────────────────
+
+interface SubwayStation {
+  name: string;
+  line: string;
+  lat: number;
+  lng: number;
+}
+
+interface SubwayData {
+  lines: object | null;
+  stations: SubwayStation[];
+  cachedAt: number;
+}
+
+async function fetchSubwayData(): Promise<SubwayData> {
+  const [stationsRes, linesRes] = await Promise.all([
+    fetch('/subway_stations.geojson'),
+    fetch('/subway_lines.geojson'),
+  ]);
+
+  if (!stationsRes.ok) throw new Error(`Failed to load subway stations: ${stationsRes.status}`);
+  if (!linesRes.ok) throw new Error(`Failed to load subway lines: ${linesRes.status}`);
+
+  const [stationsGeojson, linesGeojson] = await Promise.all([
+    stationsRes.json(),
+    linesRes.json(),
+  ]);
+
+  const stations: SubwayStation[] = (stationsGeojson.features ?? [])
+    .filter((f: any) => f?.geometry?.type === 'Point' && Array.isArray(f.geometry.coordinates))
+    .map((f: any) => ({
+      name: f.properties?.stop_name ?? '',
+      line: (f.properties?.daytime_routes ?? '').trim().split(' ')[0],
+      lat: Number(f.geometry.coordinates[1]),
+      lng: Number(f.geometry.coordinates[0]),
+    }))
+    .filter((s: SubwayStation) => !isNaN(s.lat) && !isNaN(s.lng));
+
+  return { lines: linesGeojson, stations, cachedAt: Date.now() };
+}
+
+// ── FlyTo helper ──────────────────────────────────────────────────────────────
+
+function FlyToApartment({ lat, lng }: { lat: number; lng: number }) {
+  const map = useMap();
+  useEffect(() => {
+    map.flyTo([lat, lng], Math.max(map.getZoom(), 15), { duration: 0.8 });
+  }, [lat, lng, map]);
+  return null;
+}
+
+// ── Helper formatters ─────────────────────────────────────────────────────────
+
+function typeLabel(t: string) {
+  return { studio: 'Studio', '1br': '1 BR', '2br': '2 BR', '3br+': '3+ BR' }[t] ?? t;
+}
+
+function formatDate(iso: string) {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
+// ── Props ─────────────────────────────────────────────────────────────────────
+
+interface Props {
+  apartments: Apartment[];
+  onEdit: (apt: Apartment) => void;
+  onDelete: (id: string) => void;
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
+export default function MapView({ apartments, onEdit, onDelete }: Props) {
+  const [subwayData, setSubwayData] = useState<SubwayData | null>(null);
+  const [subwayLoading, setSubwayLoading] = useState(true);
+  const [showSubway, setShowSubway] = useState(true);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const selectedApt = apartments.find(a => a.id === selectedId) ?? null;
+
+  useEffect(() => {
+    fetchSubwayData()
+      .then(setSubwayData)
+      .catch(console.error)
+      .finally(() => setSubwayLoading(false));
+  }, []);
+
+  return (
+    <div className="relative w-full h-full">
+      <MapContainer
+        center={[40.7489, -73.9680]}
+        zoom={13}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+        zoomControl={true}
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+          maxZoom={20}
+        />
+
+        {/* Subway lines */}
+        {showSubway && subwayData?.lines && (
+          <GeoJSON
+            key="subway-lines"
+            data={subwayData.lines as any}
+            style={(feature) => ({
+              color: getLineColor(feature?.properties?.service ?? ''),
+              weight: 2.5,
+              opacity: 0.8,
+              smoothFactor: 2,
+              lineCap: 'round',
+              lineJoin: 'round',
+            })}
+          />
+        )}
+
+        {/* Subway stations */}
+        {showSubway && subwayData?.stations.map((s, i) => (
+          <CircleMarker
+            key={i}
+            center={[s.lat, s.lng]}
+            radius={3.5}
+            pathOptions={{
+              color: getLineColor(s.line),
+              fillColor: getLineColor(s.line),
+              fillOpacity: 1,
+              weight: 1,
+            }}
+          >
+            <Tooltip direction="top" offset={[0, -4]} opacity={0.9}>
+              <span className="text-xs font-medium">{s.name}</span>
+              {s.line && <span className="text-xs text-gray-500"> · {s.line}</span>}
+            </Tooltip>
+          </CircleMarker>
+        ))}
+
+        {/* Apartment markers */}
+        {apartments.map(apt => (
+          <Marker
+            key={apt.id}
+            position={[apt.lat, apt.lng]}
+            icon={createApartmentIcon(apt.tourStatus)}
+            eventHandlers={{
+              click: () => setSelectedId(prev => (prev === apt.id ? null : apt.id)),
+            }}
+          >
+            <Tooltip direction="top" offset={[0, -42]} opacity={0.95}>
+              <span className="text-xs font-medium">{apt.address}</span>
+            </Tooltip>
+          </Marker>
+        ))}
+
+        {/* Fly to selected */}
+        {selectedApt && (
+          <FlyToApartment lat={selectedApt.lat} lng={selectedApt.lng} />
+        )}
+      </MapContainer>
+
+      {/* ── Subway toggle ── */}
+      <div className="absolute bottom-6 right-3 z-[1000]">
+        <button
+          onClick={() => setShowSubway(v => !v)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all"
+          style={{
+            background: showSubway ? '#1D57D8' : 'var(--surface)',
+            color: showSubway ? '#fff' : 'var(--text-2)',
+            border: `1.5px solid ${showSubway ? '#1D57D8' : 'var(--border)'}`,
+            boxShadow: '0 2px 8px rgba(26,21,18,0.12)',
+          }}
+        >
+          {subwayLoading ? <Loader2 size={12} className="animate-spin" /> : <Layers size={12} />}
+          {subwayLoading ? 'Loading subway…' : showSubway ? 'Subway ON' : 'Subway OFF'}
+        </button>
+      </div>
+
+      {/* ── Empty state ── */}
+      {apartments.length === 0 && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[1000] pointer-events-none">
+          <div
+            className="px-5 py-4 text-center rounded-xl"
+            style={{
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              boxShadow: '0 8px 24px rgba(26,21,18,0.10)',
+            }}
+          >
+            <p className="text-[14px] font-semibold" style={{ color: 'var(--text-1)', fontFamily: 'Syne, sans-serif' }}>No apartments added yet</p>
+            <p className="text-[12px] mt-1" style={{ color: 'var(--text-3)' }}>Click "+ Add Apt" to get started</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Legend ── */}
+      <div className="absolute bottom-6 left-3 z-[1000]">
+        <div
+          className="px-3 py-2.5 rounded-xl text-[12px] space-y-1.5"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 2px 12px rgba(26,21,18,0.08)' }}
+        >
+          <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--text-3)' }}>Apartments</p>
+          {(['not_contacted', 'upcoming', 'toured'] as TourStatus[]).map(s => (
+            <div key={s} className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full" style={{ background: STATUS_COLORS[s] }} />
+              <span style={{ color: 'var(--text-2)' }}>
+                {s === 'not_contacted' ? 'Not contacted' : s === 'upcoming' ? 'Upcoming tour' : 'Toured'}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Selected apartment panel ── */}
+      {selectedApt && (
+        <div
+          className="panel-enter absolute top-3 right-3 z-[1000] w-72 rounded-2xl overflow-hidden"
+          style={{
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+            boxShadow: '0 12px 40px rgba(26,21,18,0.14)',
+          }}
+        >
+          {/* Panel header */}
+          <div className="flex items-start justify-between gap-2 px-4 pt-3 pb-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest truncate" style={{ color: 'var(--accent)' }}>
+                {selectedApt.neighborhood}
+              </p>
+              <p className="text-[14px] font-semibold leading-snug mt-0.5 line-clamp-2" style={{ color: 'var(--text-1)' }}>
+                {selectedApt.address}
+              </p>
+            </div>
+            <button
+              onClick={() => setSelectedId(null)}
+              className="w-6 h-6 flex items-center justify-center rounded-full transition-colors shrink-0 mt-0.5"
+              style={{ color: 'var(--text-3)' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-2)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          {/* Details */}
+          <div className="px-4 pb-3 space-y-2.5">
+            {/* Badges */}
+            <div className="flex flex-wrap gap-1.5">
+              <span className="text-[12px] font-medium px-2 py-0.5 rounded" style={{ background: 'var(--surface-2)', color: 'var(--text-2)' }}>
+                {typeLabel(selectedApt.type)}
+              </span>
+              {selectedApt.monthlyCost > 0 && (
+                <span className="text-[12px] font-semibold px-2 py-0.5 rounded" style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
+                  ${selectedApt.monthlyCost.toLocaleString()}/mo
+                </span>
+              )}
+              {selectedApt.laundry && (
+                <span className="text-[12px] font-medium px-2 py-0.5 rounded flex items-center gap-0.5" style={{ background: 'var(--surface-2)', color: 'var(--text-2)' }}>
+                  <WashingMachine size={10} /> Laundry
+                </span>
+              )}
+            </div>
+
+            {/* Meters */}
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Sun size={12} style={{ color: 'var(--amber)', flexShrink: 0 }} />
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
+                  <div className="h-full rounded-full" style={{ width: `${selectedApt.sunlight * 10}%`, background: 'var(--amber)' }} />
+                </div>
+                <span className="text-[11px] tabular-nums w-5 text-right" style={{ color: 'var(--text-3)' }}>{selectedApt.sunlight}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <UtensilsCrossed size={12} style={{ color: '#EA580C', flexShrink: 0 }} />
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
+                  <div className="h-full rounded-full" style={{ width: `${selectedApt.kitchenUsable * 10}%`, background: '#EA580C' }} />
+                </div>
+                <span className="text-[11px] tabular-nums w-5 text-right" style={{ color: 'var(--text-3)' }}>{selectedApt.kitchenUsable}</span>
+              </div>
+            </div>
+
+            {/* Tour status */}
+            {selectedApt.tourStatus === 'upcoming' && selectedApt.tourDate ? (
+              <div className="flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1.5 rounded-lg" style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
+                <CalendarClock size={12} />
+                Tour: {formatDate(selectedApt.tourDate)} EST
+              </div>
+            ) : selectedApt.tourStatus === 'toured' ? (
+              <div className="text-[12px] font-medium px-2.5 py-1.5 rounded-lg" style={{ background: '#ECFDF5', color: '#16803A' }}>✓ Toured</div>
+            ) : (
+              <div className="text-[12px] font-medium px-2.5 py-1.5 rounded-lg" style={{ background: 'var(--surface-2)', color: 'var(--text-3)' }}>Not yet contacted</div>
+            )}
+
+            {/* Notes */}
+            {selectedApt.notes && (
+              <p className="text-[12px] italic line-clamp-2" style={{ color: 'var(--text-3)' }}>{selectedApt.notes}</p>
+            )}
+
+            {/* Actions */}
+            <div className="flex items-center gap-1 pt-1" style={{ borderTop: '1px solid var(--border)' }}>
+              {selectedApt.listingUrl && (
+                <a href={selectedApt.listingUrl} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-[12px] font-medium transition-colors"
+                  style={{ color: 'var(--text-3)' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
+                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-3)')}
+                >
+                  <ExternalLink size={11} /> Listing
+                </a>
+              )}
+              <div className="ml-auto flex gap-1">
+                <button
+                  onClick={() => { onEdit(selectedApt); setSelectedId(null); }}
+                  className="flex items-center gap-1 px-2 py-1 text-[12px] font-medium rounded-md transition-all"
+                  style={{ color: 'var(--text-3)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; }}
+                >
+                  <Pencil size={11} /> Edit
+                </button>
+                {confirmDeleteId === selectedApt.id ? (
+                  <>
+                    <button
+                      onClick={() => { onDelete(selectedApt.id); setSelectedId(null); setConfirmDeleteId(null); }}
+                      className="px-2 py-1 text-[12px] text-white font-medium rounded"
+                      style={{ background: 'var(--red)' }}
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      onClick={() => setConfirmDeleteId(null)}
+                      className="px-2 py-1 text-[12px] font-medium rounded"
+                      style={{ color: 'var(--text-3)' }}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setConfirmDeleteId(selectedApt.id)}
+                    className="flex items-center gap-1 px-2 py-1 text-[12px] font-medium rounded-md transition-all"
+                    style={{ color: 'var(--text-3)' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--red-light)'; e.currentTarget.style.color = 'var(--red)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; }}
+                  >
+                    <Trash2 size={11} /> Delete
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

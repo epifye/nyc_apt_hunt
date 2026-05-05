@@ -1,0 +1,122 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg:           #F7F4EF;
+    --surface:      #FFFFFF;
+    --surface-2:    #F0ECE5;
+    --border:       #E3D9CE;
+    --border-hover: #C5B8AB;
+    --text-1:       #1A1512;
+    --text-2:       #6B5E54;
+    --text-3:       #A89890;
+    --accent:       #1D57D8;
+    --accent-light: #EBF1FD;
+    --accent-hover: #1648C0;
+    --amber:        #D97706;
+    --amber-light:  #FFFBEB;
+    --green:        #16803A;
+    --green-light:  #ECFDF5;
+    --red:          #C53030;
+    --red-light:    #FFF5F5;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Figtree', sans-serif;
+    background: var(--bg);
+    color: var(--text-1);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+}
+
+/* ── Map ── */
+.leaflet-container {
+  background: #e8e3da;
+  font-family: 'Figtree', sans-serif !important;
+}
+.leaflet-control-zoom a {
+  font-family: 'Figtree', sans-serif !important;
+  color: var(--text-1) !important;
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+.leaflet-control-zoom a:hover {
+  background: var(--surface-2) !important;
+}
+.leaflet-tooltip {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+  color: var(--text-1) !important;
+  font-family: 'Figtree', sans-serif !important;
+  font-size: 12px !important;
+  padding: 4px 8px !important;
+  box-shadow: 0 2px 8px rgba(26,21,18,0.08) !important;
+}
+.leaflet-tooltip::before { border-top-color: var(--border) !important; }
+
+/* ── Card hover ── */
+.apt-card {
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.apt-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(26,21,18,0.10);
+}
+
+/* ── Animations ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+@keyframes slideRight {
+  from { opacity: 0; transform: translateX(14px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.modal-enter { animation: fadeUp 0.22s cubic-bezier(0.34, 1.3, 0.64, 1) forwards; }
+.panel-enter { animation: slideRight 0.2s ease forwards; }
+
+/* ── Range sliders ── */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  outline: none;
+  cursor: pointer;
+  margin: 6px 0;
+}
+input[type='range'].slider-amber::-webkit-slider-runnable-track { background: var(--border); }
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2.5px solid var(--accent);
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(26,21,18,0.15);
+  transition: transform 0.1s ease;
+}
+input[type='range']::-webkit-slider-thumb:hover { transform: scale(1.15); }
+input[type='range'].slider-amber::-webkit-slider-thumb { border-color: var(--amber); }
+input[type='range'].slider-orange::-webkit-slider-thumb { border-color: #EA580C; }
+
+/* ── Checkbox / Radio ── */
+input[type='checkbox'], input[type='radio'] {
+  accent-color: var(--accent);
+}
