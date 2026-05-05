@@ -63,7 +63,7 @@ function createApartmentIcon(status: TourStatus): L.DivIcon {
 
 interface SubwayStation {
   name: string;
-  line: string;
+  routes: string[];
   lat: number;
   lng: number;
 }
@@ -92,7 +92,7 @@ async function fetchSubwayData(): Promise<SubwayData> {
     .filter((f: any) => f?.geometry?.type === 'Point' && Array.isArray(f.geometry.coordinates))
     .map((f: any) => ({
       name: f.properties?.stop_name ?? '',
-      line: (f.properties?.daytime_routes ?? '').trim().split(' ')[0],
+      routes: (f.properties?.daytime_routes ?? '').trim().split(/\s+/).filter(Boolean),
       lat: Number(f.geometry.coordinates[1]),
       lng: Number(f.geometry.coordinates[0]),
     }))
@@ -194,15 +194,33 @@ export default function MapView({ apartments, onEdit, onDelete }: Props) {
             center={[s.lat, s.lng]}
             radius={3.5}
             pathOptions={{
-              color: getLineColor(s.line),
-              fillColor: getLineColor(s.line),
+              color: getLineColor(s.routes[0] ?? ''),
+              fillColor: getLineColor(s.routes[0] ?? ''),
               fillOpacity: 1,
               weight: 1,
             }}
           >
-            <Tooltip direction="top" offset={[0, -4]} opacity={0.9}>
-              <span className="text-xs font-medium">{s.name}</span>
-              {s.line && <span className="text-xs text-gray-500"> · {s.line}</span>}
+            <Tooltip direction="top" offset={[0, -4]} opacity={0.95}>
+              <div style={{ fontFamily: 'Figtree, sans-serif', lineHeight: 1.4 }}>
+                <div style={{ fontWeight: 600, fontSize: 12, marginBottom: s.routes.length ? 4 : 0 }}>{s.name}</div>
+                {s.routes.length > 0 && (
+                  <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                    {s.routes.map(r => (
+                      <span
+                        key={r}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          width: 18, height: 18, borderRadius: '50%',
+                          background: getLineColor(r), color: '#fff',
+                          fontSize: 10, fontWeight: 700, lineHeight: 1,
+                        }}
+                      >
+                        {r}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </Tooltip>
           </CircleMarker>
         ))}
@@ -359,6 +377,13 @@ export default function MapView({ apartments, onEdit, onDelete }: Props) {
               <div className="text-[12px] font-medium px-2.5 py-1.5 rounded-lg" style={{ background: '#ECFDF5', color: '#16803A' }}>✓ Toured</div>
             ) : (
               <div className="text-[12px] font-medium px-2.5 py-1.5 rounded-lg" style={{ background: 'var(--surface-2)', color: 'var(--text-3)' }}>Not yet contacted</div>
+            )}
+
+            {/* Available date */}
+            {selectedApt.availableDate && (
+              <div className="flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1.5 rounded-lg" style={{ background: 'var(--surface-2)', color: 'var(--text-2)' }}>
+                🔑 Available {new Date(selectedApt.availableDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </div>
             )}
 
             {/* Notes */}

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   ArrowUpDown, Sun, UtensilsCrossed, WashingMachine,
   ExternalLink, Pencil, Trash2, CalendarClock,
-  CheckCircle2, Clock, MessageSquareOff,
+  CheckCircle2, Clock, MessageSquareOff, KeyRound,
 } from 'lucide-react';
 import { Apartment, TourStatus } from '../types';
 
@@ -255,6 +255,17 @@ export default function ListView({ apartments, onEdit, onDelete }: Props) {
                         <RatingBar value={apt.kitchenUsable} color="#EA580C" />
                       </div>
                     </div>
+
+                    {/* Available date */}
+                    {apt.availableDate && (
+                      <div
+                        className="flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1.5 rounded-lg"
+                        style={{ background: 'var(--surface-2)', color: 'var(--text-2)' }}
+                      >
+                        <KeyRound size={12} />
+                        Available {new Date(apt.availableDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </div>
+                    )}
 
                     {/* Tour date */}
                     {apt.tourStatus === 'upcoming' && apt.tourDate && (

@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { X, MapPin, Loader2, ExternalLink } from 'lucide-react';
+import { X, MapPin, Loader2, ExternalLink, Sparkles, CheckCircle2 } from 'lucide-react';
 import { Apartment, ApartmentType, TourStatus } from '../types';
 import { geocodeAddress } from '../utils/geocoding';
+import { parseStreetEasyHtml } from '../utils/streeteasy';
 
 interface Props {
   onClose: () => void;
@@ -10,9 +11,9 @@ interface Props {
 }
 
 const TOUR_OPTIONS: { value: TourStatus; label: string; desc: string }[] = [
-  { value: 'not_contacted', label: 'Not heard back',  desc: 'Waiting on broker' },
-  { value: 'upcoming',      label: 'Tour scheduled',  desc: 'Date confirmed' },
-  { value: 'toured',        label: 'Toured',           desc: 'Already visited' },
+  { value: 'not_contacted', label: 'Not heard back', desc: 'Waiting on broker' },
+  { value: 'upcoming',      label: 'Tour scheduled', desc: 'Date confirmed' },
+  { value: 'toured',        label: 'Toured',          desc: 'Already visited' },
 ];
 
 function Label({ children }: { children: React.ReactNode }) {
@@ -23,16 +24,12 @@ function Label({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Input({ className = '', ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+function TextInput({ className = '', style, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
       className={`w-full rounded-lg px-3 py-2 text-[14px] outline-none transition-all ${className}`}
-      style={{
-        background: 'var(--surface)',
-        border: '1.5px solid var(--border)',
-        color: 'var(--text-1)',
-      }}
+      style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', color: 'var(--text-1)', ...style }}
       onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
       onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
     />
@@ -54,12 +51,64 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
   const [kitchen,      setKitchen]      = useState(apt?.kitchenUsable ?? 5);
   const [tourStatus,   setTourStatus]   = useState<TourStatus>(apt?.tourStatus ?? 'not_contacted');
   const [tourDate,     setTourDate]     = useState(apt?.tourDate ?? '');
-  const [notes,        setNotes]        = useState(apt?.notes ?? '');
-  const [listingUrl,   setListingUrl]   = useState(apt?.listingUrl ?? '');
+  const [notes,          setNotes]          = useState(apt?.notes ?? '');
+  const [listingUrl,     setListingUrl]     = useState(apt?.listingUrl ?? '');
+  const [availableDate,  setAvailableDate]  = useState(apt?.availableDate ?? '');
 
   const [geocoding,    setGeocoding]    = useState(false);
   const [geocodeError, setGeocodeError] = useState('');
   const [geocoded,     setGeocoded]     = useState(isEditing);
+
+  const [seHtml,    setSeHtml]    = useState('');
+  const [seError,   setSeError]   = useState('');
+  const [seFilled,  setSeFilled]  = useState(false);
+
+  // ── StreetEasy autofill ───────────────────────────────────────────────────
+
+  const handleStreetEasyFill = async () => {
+    if (!seHtml.trim()) return;
+    setSeError('');
+    setSeFilled(false);
+    try {
+      const data = parseStreetEasyHtml(seHtml);
+
+      setAddress(data.address);
+      if (data.monthlyCost)   setMonthlyCost(String(data.monthlyCost));
+      if (data.type)          setType(data.type);
+      if (data.laundry)       setLaundry(data.laundry);
+      if (data.notes)         setNotes(data.notes);
+      if (data.availableDate) setAvailableDate(data.availableDate);
+      if (data.neighborhood)  setNeighborhood(data.neighborhood);
+      if (data.listingUrl)    setListingUrl(data.listingUrl);
+
+      const desc = (data.notes ?? '').toLowerCase();
+      if (['south facing','south-facing','sunlight','sunlit','sun-filled','sun filled','sun drenched','sun-drenched','sunny'].some(k => desc.includes(k)))
+        setSunlight(8);
+      if (['new kitchen','stainless','renovated kitchen','updated kitchen','modern kitchen',"chef's kitchen",'chefs kitchen','gut renovated'].some(k => desc.includes(k)))
+        setKitchen(8);
+
+      setSeFilled(true);
+      setGeocoded(false);
+
+      // Auto-geocode
+      setGeocoding(true);
+      try {
+        const geo = await geocodeAddress(data.address);
+        setLat(geo.lat);
+        setLng(geo.lng);
+        if (!data.neighborhood) setNeighborhood(geo.neighborhood);
+        setGeocoded(true);
+      } catch {
+        // user can click Find manually
+      } finally {
+        setGeocoding(false);
+      }
+    } catch (err) {
+      setSeError(err instanceof Error ? err.message : 'Could not parse HTML.');
+    }
+  };
+
+  // ── Manual geocode ────────────────────────────────────────────────────────
 
   const handleGeocode = async () => {
     if (!address.trim()) return;
@@ -69,7 +118,7 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
       const result = await geocodeAddress(address);
       setLat(result.lat);
       setLng(result.lng);
-      setNeighborhood(result.neighborhood);
+      if (!neighborhood) setNeighborhood(result.neighborhood);
       setGeocoded(true);
     } catch (err) {
       setGeocodeError(err instanceof Error ? err.message : 'Could not find address.');
@@ -77,6 +126,8 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
       setGeocoding(false);
     }
   };
+
+  // ── Submit ────────────────────────────────────────────────────────────────
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,11 +137,13 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
       monthlyCost: parseFloat(monthlyCost) || 0,
       sunlight, kitchenUsable: kitchen, tourStatus,
       tourDate: tourStatus === 'upcoming' ? tourDate : undefined,
+      availableDate: availableDate || undefined,
       notes,
       listingUrl: listingUrl.trim() || undefined,
     });
     onClose();
   };
+
 
   return (
     <div
@@ -106,14 +159,8 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
         }}
       >
         {/* Header */}
-        <div
-          className="flex items-center justify-between px-5 py-4 shrink-0"
-          style={{ borderBottom: '1px solid var(--border)' }}
-        >
-          <h2
-            className="text-[16px] font-bold"
-            style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text-1)' }}
-          >
+        <div className="flex items-center justify-between px-5 py-4 shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
+          <h2 className="text-[16px] font-bold" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text-1)' }}>
             {isEditing ? 'Edit Apartment' : 'Add Apartment'}
           </h2>
           <button
@@ -127,19 +174,76 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
           </button>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
           <div className="px-5 py-4 space-y-5">
 
-            {/* Address */}
+            {/* ── StreetEasy autofill ── */}
+            {!isEditing && (
+              <div
+                className="rounded-xl p-4 space-y-3"
+                style={{ background: 'var(--accent-light)', border: '1.5px solid #c7d9f8' }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles size={14} style={{ color: 'var(--accent)' }} />
+                    <span className="text-[13px] font-semibold" style={{ color: 'var(--accent)' }}>
+                      Autofill from StreetEasy
+                    </span>
+                  </div>
+                  <span className="text-[11px]" style={{ color: 'var(--accent)' }}>
+                    View Source → Select All → Paste
+                  </span>
+                </div>
+                <textarea
+                  value={seHtml}
+                  onChange={e => { setSeHtml(e.target.value); setSeError(''); setSeFilled(false); }}
+                  placeholder="Paste the full page source here (Cmd+A then Cmd+C on the view-source page)…"
+                  rows={3}
+                  className="w-full rounded-lg px-3 py-2 text-[12px] outline-none transition-all resize-none font-mono"
+                  style={{
+                    background: 'var(--surface)',
+                    border: `1.5px solid ${seFilled ? 'var(--green)' : 'var(--border)'}`,
+                    color: 'var(--text-2)',
+                  }}
+                  onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                  onBlur={e => (e.currentTarget.style.borderColor = seFilled ? 'var(--green)' : 'var(--border)')}
+                />
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[12px]" style={{ color: 'var(--accent)' }}>
+                    {seError && <span style={{ color: 'var(--red)' }}>{seError}</span>}
+                    {seFilled && (
+                      <span className="flex items-center gap-1" style={{ color: 'var(--green)' }}>
+                        <CheckCircle2 size={12} /> Form filled — review and adjust below
+                      </span>
+                    )}
+                    {!seFilled && !seError && 'Or fill in manually below ↓'}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleStreetEasyFill}
+                    disabled={!seHtml.trim()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-semibold text-white transition-opacity disabled:opacity-40 shrink-0"
+                    style={{ background: 'var(--accent)' }}
+                  >
+                    <Sparkles size={13} />
+                    Fill
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ── Divider if autofill shown ── */}
+            {!isEditing && <div style={{ borderTop: '1px solid var(--border)' }} />}
+
+            {/* ── Address ── */}
             <div>
               <Label>Address</Label>
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={address}
-                  onChange={e => { setAddress(e.target.value); setGeocoded(false); }}
-                  placeholder="123 W 72nd St, New York, NY"
+                  onChange={e => { setAddress(e.target.value); setGeocoded(false); setGeocodeError(''); }}
+                  placeholder="200 Allen Street #7R, New York, NY"
                   required
                   className="flex-1 rounded-lg px-3 py-2 text-[14px] outline-none transition-all"
                   style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', color: 'var(--text-1)' }}
@@ -157,12 +261,10 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
                   {geocoding ? 'Finding…' : 'Find'}
                 </button>
               </div>
-              {geocodeError && (
-                <p className="text-[12px] mt-1.5" style={{ color: 'var(--red)' }}>{geocodeError}</p>
-              )}
+              {geocodeError && <p className="text-[12px] mt-1.5" style={{ color: 'var(--red)' }}>{geocodeError}</p>}
               {geocoded && !geocodeError && (
-                <p className="text-[12px] mt-1.5 font-medium" style={{ color: 'var(--green)' }}>
-                  📍 {neighborhood}
+                <p className="text-[12px] mt-1.5 font-medium flex items-center gap-1" style={{ color: 'var(--green)' }}>
+                  <CheckCircle2 size={12} /> Mapped to: {neighborhood}
                 </p>
               )}
             </div>
@@ -171,7 +273,7 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
             {geocoded && (
               <div>
                 <Label>Neighborhood <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(edit if needed)</span></Label>
-                <Input value={neighborhood} onChange={e => setNeighborhood(e.target.value)} />
+                <TextInput value={neighborhood} onChange={e => setNeighborhood(e.target.value)} />
               </div>
             )}
 
@@ -201,9 +303,7 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
                     onChange={e => setLaundry(e.target.checked)}
                     className="w-4 h-4 rounded cursor-pointer"
                   />
-                  <span className="text-[13px] font-medium" style={{ color: 'var(--text-2)' }}>
-                    Laundry in building
-                  </span>
+                  <span className="text-[13px] font-medium" style={{ color: 'var(--text-2)' }}>Laundry in building</span>
                 </label>
               </div>
             </div>
@@ -213,7 +313,7 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
               <Label>Monthly Rent</Label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[14px] font-medium" style={{ color: 'var(--text-3)' }}>$</span>
-                <Input
+                <TextInput
                   type="number"
                   value={monthlyCost}
                   onChange={e => setMonthlyCost(e.target.value)}
@@ -224,8 +324,17 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
               </div>
             </div>
 
-            {/* Divider */}
-            <div className="border-t" style={{ borderColor: 'var(--border)' }} />
+            {/* Available date */}
+            <div>
+              <Label>Available Date <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(move-in)</span></Label>
+              <TextInput
+                type="date"
+                value={availableDate}
+                onChange={e => setAvailableDate(e.target.value)}
+              />
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--border)' }} />
 
             {/* Sunlight */}
             <div>
@@ -233,11 +342,8 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
                 <Label>☀️ Sunlight</Label>
                 <span className="text-[13px] font-bold tabular-nums" style={{ color: 'var(--amber)' }}>{sunlight}/10</span>
               </div>
-              <input
-                type="range" min="0" max="10" value={sunlight}
-                onChange={e => setSunlight(parseInt(e.target.value))}
-                className="slider-amber"
-              />
+              <input type="range" min="0" max="10" value={sunlight}
+                onChange={e => setSunlight(parseInt(e.target.value))} className="slider-amber" />
             </div>
 
             {/* Kitchen */}
@@ -246,38 +352,23 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
                 <Label>🍳 Kitchen Usability</Label>
                 <span className="text-[13px] font-bold tabular-nums" style={{ color: '#EA580C' }}>{kitchen}/10</span>
               </div>
-              <input
-                type="range" min="0" max="10" value={kitchen}
-                onChange={e => setKitchen(parseInt(e.target.value))}
-                className="slider-orange"
-              />
+              <input type="range" min="0" max="10" value={kitchen}
+                onChange={e => setKitchen(parseInt(e.target.value))} className="slider-orange" />
             </div>
 
-            {/* Divider */}
-            <div className="border-t" style={{ borderColor: 'var(--border)' }} />
+            <div style={{ borderTop: '1px solid var(--border)' }} />
 
             {/* Tour status */}
             <div>
               <Label>Tour Status</Label>
               <div className="grid grid-cols-3 gap-2">
                 {TOUR_OPTIONS.map(({ value, label, desc }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setTourStatus(value)}
+                  <button key={value} type="button" onClick={() => setTourStatus(value)}
                     className="flex flex-col items-start gap-0.5 px-3 py-2.5 rounded-xl text-left transition-all"
                     style={
                       tourStatus === value
-                        ? {
-                            background: 'var(--accent-light)',
-                            border: '1.5px solid var(--accent)',
-                            color: 'var(--accent)',
-                          }
-                        : {
-                            background: 'var(--surface-2)',
-                            border: '1.5px solid transparent',
-                            color: 'var(--text-2)',
-                          }
+                        ? { background: 'var(--accent-light)', border: '1.5px solid var(--accent)', color: 'var(--accent)' }
+                        : { background: 'var(--surface-2)', border: '1.5px solid transparent', color: 'var(--text-2)' }
                     }
                   >
                     <span className="text-[13px] font-semibold">{label}</span>
@@ -287,11 +378,10 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
               </div>
             </div>
 
-            {/* Tour date */}
             {tourStatus === 'upcoming' && (
               <div>
                 <Label>Tour Date & Time <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(Eastern Time)</span></Label>
-                <Input type="datetime-local" value={tourDate} onChange={e => setTourDate(e.target.value)} />
+                <TextInput type="datetime-local" value={tourDate} onChange={e => setTourDate(e.target.value)} />
               </div>
             )}
 
@@ -330,13 +420,9 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
           </div>
 
           {/* Footer */}
-          <div
-            className="flex justify-end items-center gap-3 px-5 py-4 shrink-0"
-            style={{ borderTop: '1px solid var(--border)', background: 'var(--bg)' }}
-          >
-            <button
-              type="button"
-              onClick={onClose}
+          <div className="flex justify-end items-center gap-3 px-5 py-4 shrink-0"
+            style={{ borderTop: '1px solid var(--border)', background: 'var(--bg)' }}>
+            <button type="button" onClick={onClose}
               className="px-4 py-2 text-[13px] font-medium rounded-full transition-colors"
               style={{ color: 'var(--text-2)' }}
               onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
@@ -344,8 +430,7 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
             >
               Cancel
             </button>
-            <button
-              type="submit"
+            <button type="submit"
               className="px-5 py-2 text-[13px] font-semibold text-white rounded-full transition-colors"
               style={{ background: 'var(--accent)' }}
               onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent-hover)')}

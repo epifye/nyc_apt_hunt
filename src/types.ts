@@ -15,6 +15,7 @@ export interface Apartment {
   notes: string;
   tourStatus: TourStatus;
   tourDate?: string;
+  availableDate?: string;
   listingUrl?: string;
   createdAt: string;
 }

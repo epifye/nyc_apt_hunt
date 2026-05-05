@@ -44,3 +44,20 @@ Street easy and redfin link import
 email tracking
 calender
 claude --resume 6eec7318-9b9b-4cff-8cec-248c79598e45
+
+Deploy:
+npm run deploy
+
+That builds the app and pushes the dist/ folder to a gh-pages branch automatically. Then go to your repo → Settings → Pages → Source → Deploy from
+branch → gh-pages. Your app will be live at https://YOUR_USERNAME.github.io/YOUR_REPO/.
+
+Every time you want to update the live site, just run npm run deploy again.
+
+---
+
+How sharing works:
+
+1. You add apartments, click Export → downloads nyc-apartments-2026-05-05.json
+2. Send the file to your friend (AirDrop, iMessage, email, whatever)
+3. They open the same GitHub Pages URL, click Import, pick the file
+4. Import is merge-based — it only adds apartments they don't already have, so running it twice won't create duplicates
