@@ -4,14 +4,21 @@ import MapView from './components/MapView';
 import ListView from './components/ListView';
 import CalendarView from './components/CalendarView';
 import AddApartmentModal from './components/AddApartmentModal';
+import PasswordModal from './components/PasswordModal';
 import { useApartments } from './hooks/useApartments';
+import { useAuth } from './hooks/useAuth';
+import { useComments } from './hooks/useComments';
 import { Apartment, AppView } from './types';
 
 export default function App() {
-  const [view, setView]                 = useState<AppView>('map');
+  const { isOwner, checkPassword, login, logout } = useAuth();
+  const { comments, addComment, deleteComment } = useComments();
+
+  const [view, setView]                   = useState<AppView>('map');
   const [panelExpanded, setPanelExpanded] = useState(false);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [editingApartment, setEditingApartment] = useState<Apartment | null>(null);
+  const [showAddModal, setShowAddModal]   = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [editingApartment, setEditingApartment]   = useState<Apartment | null>(null);
 
   const { apartments, loading, addApartment, updateApartment, deleteApartment } = useApartments();
 
@@ -42,10 +49,11 @@ export default function App() {
         onSetView={handleSetView}
         onAddApartment={() => { setEditingApartment(null); setShowAddModal(true); }}
         apartmentCount={apartments.length}
+        isOwner={isOwner}
+        onOwnerClick={() => isOwner ? logout() : setShowPasswordModal(true)}
       />
 
       <main className="flex-1 overflow-hidden relative">
-        {/* Map always rendered as base layer */}
         <div
           className="absolute inset-0"
           style={{ opacity: loading ? 0.4 : 1, transition: 'opacity 0.2s' }}
@@ -56,10 +64,13 @@ export default function App() {
             onDelete={deleteApartment}
             showList={panelOpen}
             listExpanded={panelExpanded}
+            isOwner={isOwner}
+            comments={comments}
+            onAddComment={addComment}
+            onDeleteComment={deleteComment}
           />
         </div>
 
-        {/* List panel */}
         <ListView
           apartments={apartments}
           onEdit={handleEdit}
@@ -68,24 +79,37 @@ export default function App() {
           isExpanded={panelExpanded}
           onClose={() => { setView('map'); setPanelExpanded(false); }}
           onToggleExpand={() => setPanelExpanded(v => !v)}
+          isOwner={isOwner}
+          comments={comments}
+          onAddComment={addComment}
+          onDeleteComment={deleteComment}
         />
 
-        {/* Calendar panel */}
-        <CalendarView
-          apartments={apartments}
-          onEdit={handleEdit}
-          show={view === 'calendar'}
-          isExpanded={panelExpanded}
-          onClose={() => { setView('map'); setPanelExpanded(false); }}
-          onToggleExpand={() => setPanelExpanded(v => !v)}
-        />
+        {isOwner && (
+          <CalendarView
+            apartments={apartments}
+            onEdit={handleEdit}
+            show={view === 'calendar'}
+            isExpanded={panelExpanded}
+            onClose={() => { setView('map'); setPanelExpanded(false); }}
+            onToggleExpand={() => setPanelExpanded(v => !v)}
+          />
+        )}
       </main>
 
-      {showAddModal && (
+      {isOwner && showAddModal && (
         <AddApartmentModal
           onClose={() => { setShowAddModal(false); setEditingApartment(null); }}
           onSave={handleSave}
           editingApartment={editingApartment}
+        />
+      )}
+
+      {showPasswordModal && (
+        <PasswordModal
+          onSuccess={login}
+          onClose={() => setShowPasswordModal(false)}
+          checkPassword={checkPassword}
         />
       )}
     </div>

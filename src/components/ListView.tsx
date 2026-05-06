@@ -5,8 +5,9 @@ import {
   Clock, MessageSquareOff, KeyRound, Users, ArrowUpDown,
   LayoutList, AlignJustify, ImageOff,
 } from 'lucide-react';
-import { Apartment, TourStatus } from '../types';
+import { Apartment, TourStatus, Comment } from '../types';
 import { shortAddress } from '../utils/address';
+import CommentSection from './CommentSection';
 
 type SortKey = 'monthlyCost' | 'sunlight' | 'kitchenUsable' | 'tourDate' | 'neighborhood' | 'createdAt';
 type SortDir = 'asc' | 'desc';
@@ -29,6 +30,10 @@ interface Props {
   isExpanded: boolean;
   onClose: () => void;
   onToggleExpand: () => void;
+  isOwner: boolean;
+  comments: Comment[];
+  onAddComment: (aptId: string, name: string, text: string, rating: number) => Promise<void>;
+  onDeleteComment: (id: string) => Promise<void>;
 }
 
 const STATUS_CONFIG: Record<TourStatus, { label: string; icon: React.ReactNode; bg: string; text: string; border: string }> = {
@@ -103,9 +108,10 @@ interface CompactRowProps {
   confirming: boolean;
   onConfirm: () => void;
   onCancelConfirm: () => void;
+  isOwner: boolean;
 }
 
-function CompactRow({ apt, onEdit, onDelete, confirming, onConfirm, onCancelConfirm }: CompactRowProps) {
+function CompactRow({ apt, onEdit, onDelete, confirming, onConfirm, onCancelConfirm, isOwner }: CompactRowProps) {
   const status = STATUS_CONFIG[apt.tourStatus];
   const [hovered, setHovered] = useState(false);
 
@@ -156,76 +162,79 @@ function CompactRow({ apt, onEdit, onDelete, confirming, onConfirm, onCancelConf
       )}
 
       {/* Tour badge */}
-      {apt.tourStatus === 'upcoming' && apt.tourDate && (
-        <span style={{
-          fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 5, flexShrink: 0,
-          background: '#EBF1FD', color: 'var(--accent)',
-        }}>
-          {formatTourDateShort(apt.tourDate)}
-        </span>
-      )}
-      {apt.tourStatus === 'pending_availability' && (
-        <span style={{
-          fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 5, flexShrink: 0,
-          background: '#FFF7ED', color: '#C2410C',
-        }}>
-          Pending AP
-        </span>
-      )}
-      {apt.tourStatus === 'toured' && (
-        <span style={{
-          fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 5, flexShrink: 0,
-          background: '#ECFDF5', color: '#16803A',
-        }}>
-          Toured
-        </span>
+      {isOwner ? (
+        <>
+          {apt.tourStatus === 'upcoming' && apt.tourDate && (
+            <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 5, flexShrink: 0, background: '#EBF1FD', color: 'var(--accent)' }}>
+              {formatTourDateShort(apt.tourDate)}
+            </span>
+          )}
+          {apt.tourStatus === 'pending_availability' && (
+            <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 5, flexShrink: 0, background: '#FFF7ED', color: '#C2410C' }}>
+              Pending AP
+            </span>
+          )}
+          {apt.tourStatus === 'toured' && (
+            <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 5, flexShrink: 0, background: '#ECFDF5', color: '#16803A' }}>
+              Toured
+            </span>
+          )}
+        </>
+      ) : (
+        apt.tourStatus === 'toured' && (
+          <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 5, flexShrink: 0, background: '#ECFDF5', color: '#16803A' }}>
+            Toured
+          </span>
+        )
       )}
 
-      {/* Actions */}
-      <div style={{ display: 'flex', gap: 1, flexShrink: 0, opacity: hovered || confirming ? 1 : 0, transition: 'opacity 0.15s' }}>
-        {confirming ? (
-          <>
-            <button
-              onClick={() => { onDelete(apt.id); onCancelConfirm(); }}
-              style={{ ...actionBtn, background: 'var(--red)', color: '#fff', width: 'auto', padding: '0 7px', fontSize: 11, fontWeight: 600, borderRadius: 6 }}
-            >
-              Delete
-            </button>
-            <button
-              onClick={onCancelConfirm}
-              style={{ ...actionBtn, color: 'var(--text-3)', fontSize: 11 }}
-            >
-              ✕
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              onClick={() => onEdit(apt)}
-              style={{ ...actionBtn, color: 'var(--text-3)' }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.color = 'var(--accent)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; }}
-            >
-              <Pencil size={11} />
-            </button>
-            <button
-              onClick={onConfirm}
-              style={{ ...actionBtn, color: 'var(--text-3)' }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'var(--red-light)'; e.currentTarget.style.color = 'var(--red)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; }}
-            >
-              <Trash2 size={11} />
-            </button>
-          </>
-        )}
-      </div>
+      {/* Actions — owner only */}
+      {isOwner && (
+        <div style={{ display: 'flex', gap: 1, flexShrink: 0, opacity: hovered || confirming ? 1 : 0, transition: 'opacity 0.15s' }}>
+          {confirming ? (
+            <>
+              <button
+                onClick={() => { onDelete(apt.id); onCancelConfirm(); }}
+                style={{ ...actionBtn, background: 'var(--red)', color: '#fff', width: 'auto', padding: '0 7px', fontSize: 11, fontWeight: 600, borderRadius: 6 }}
+              >
+                Delete
+              </button>
+              <button
+                onClick={onCancelConfirm}
+                style={{ ...actionBtn, color: 'var(--text-3)', fontSize: 11 }}
+              >
+                ✕
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => onEdit(apt)}
+                style={{ ...actionBtn, color: 'var(--text-3)' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; }}
+              >
+                <Pencil size={11} />
+              </button>
+              <button
+                onClick={onConfirm}
+                style={{ ...actionBtn, color: 'var(--text-3)' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--red-light)'; e.currentTarget.style.color = 'var(--red)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; }}
+              >
+                <Trash2 size={11} />
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ListView({ apartments, onEdit, onDelete, show, isExpanded, onClose, onToggleExpand }: Props) {
+export default function ListView({ apartments, onEdit, onDelete, show, isExpanded, onClose, onToggleExpand, isOwner, comments, onAddComment, onDeleteComment }: Props) {
   const isMobile = useIsMobile();
   const [sortKey, setSortKey]         = useState<SortKey>('tourDate');
   const [sortDir, setSortDir]         = useState<SortDir>('asc');
@@ -392,6 +401,7 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
                 confirming={confirmDeleteId === apt.id}
                 onConfirm={() => setConfirm(apt.id)}
                 onCancelConfirm={() => setConfirm(null)}
+                isOwner={isOwner}
               />
             ))}
           </div>
@@ -399,171 +409,119 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
           // ── Card view ──
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {sorted.map(apt => {
-              const status = STATUS_CONFIG[apt.tourStatus];
+              const status    = STATUS_CONFIG[apt.tourStatus];
               const confirming = confirmDeleteId === apt.id;
-              return (
+              const aptComments = comments.filter(c => c.aptId === apt.id);
+              const toured    = apt.tourStatus === 'toured';
+              const friendBorder = toured ? '#16803A' : 'var(--border-hover)';
+
+              return isOwner ? (
+                // ── Owner card (full info) ──
                 <div
                   key={apt.id}
                   className="apt-card"
                   style={{
-                    background: 'var(--surface)',
-                    border: '1px solid var(--border)',
-                    borderLeft: `3px solid ${status.border}`,
-                    borderRadius: 12,
-                    boxShadow: '0 1px 3px rgba(26,21,18,0.05)',
-                    overflow: 'hidden',
+                    background: 'var(--surface)', border: '1px solid var(--border)',
+                    borderLeft: `3px solid ${status.border}`, borderRadius: 12,
+                    boxShadow: '0 1px 3px rgba(26,21,18,0.05)', overflow: 'hidden',
                   }}
                 >
                   <div style={{ padding: '12px 14px' }}>
-
-                    {/* Neighborhood + status badge */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between',
-                      alignItems: 'flex-start', marginBottom: 4, gap: 8 }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
-                        textTransform: 'uppercase', color: 'var(--accent)', lineHeight: 1.4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4, gap: 8 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent)', lineHeight: 1.4 }}>
                         {apt.neighborhood}
                       </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10,
-                        fontWeight: 500, padding: '2px 7px', borderRadius: 20, flexShrink: 0,
-                        background: status.bg, color: status.text }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 500, padding: '2px 7px', borderRadius: 20, flexShrink: 0, background: status.bg, color: status.text }}>
                         {status.icon}{status.label}
                       </span>
                     </div>
-
-                    {/* Address */}
-                    <p style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.35, color: 'var(--text-1)',
-                      margin: '0 0 10px', overflow: 'hidden', display: '-webkit-box',
-                      WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    <p style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.35, color: 'var(--text-1)', margin: '0 0 10px', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                       {shortAddress(apt.address, apt.aptNumber)}
                     </p>
-
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+                      <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 5, background: 'var(--surface-2)', color: 'var(--text-2)' }}>{typeLabel(apt.type)}</span>
+                      {apt.monthlyCost > 0 && <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 5, background: 'var(--accent-light)', color: 'var(--accent)' }}>${apt.monthlyCost.toLocaleString()}/mo</span>}
+                      {apt.laundry && <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 5, display: 'flex', alignItems: 'center', gap: 4, background: 'var(--surface-2)', color: 'var(--text-2)' }}><WashingMachine size={10} /> Laundry</span>}
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}><Sun size={12} style={{ color: 'var(--amber)' }} /><span style={{ fontWeight: 600, color: 'var(--amber)' }}>{apt.sunlight}</span><span style={{ color: 'var(--text-3)' }}>/10</span></span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}><UtensilsCrossed size={12} style={{ color: '#EA580C' }} /><span style={{ fontWeight: 600, color: '#EA580C' }}>{apt.kitchenUsable}</span><span style={{ color: 'var(--text-3)' }}>/10</span></span>
+                    </div>
+                    {apt.listingImageUrl && <ListingImage url={apt.listingImageUrl} />}
+                    {apt.availableDate && <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}><KeyRound size={11} /> Available {formatAvailDate(apt.availableDate)}</div>}
+                    {apt.tourStatus === 'upcoming' && apt.tourDate && <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--accent)', marginBottom: 4 }}><CalendarClock size={11} /> Tour: {formatTourDate(apt.tourDate)}</div>}
+                    {apt.tourStatus === 'pending_availability' && apt.apAvailability && <div style={{ fontSize: 11, color: '#9A3412', background: '#FFF7ED', padding: '5px 8px', borderRadius: 6, marginBottom: 4 }}><span style={{ fontWeight: 600, color: '#C2410C' }}>AP free: </span>{apt.apAvailability}</div>}
+                    {apt.notes && <p style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-3)', margin: '4px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{apt.notes}</p>}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '7px 14px', borderTop: '1px solid var(--border)', gap: 4 }}>
+                    {apt.listingUrl && <a href={apt.listingUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 500, color: 'var(--text-3)', textDecoration: 'none', transition: 'color 0.12s' }} onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')} onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-3)')}><ExternalLink size={11} /> Listing</a>}
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 3 }}>
+                      <button onClick={() => onEdit(apt)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 500, border: 'none', cursor: 'pointer', background: 'transparent', color: 'var(--text-3)', transition: 'all 0.12s' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--accent)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; }}><Pencil size={10} /> Edit</button>
+                      {confirming ? (
+                        <><button onClick={() => { onDelete(apt.id); setConfirm(null); }} style={{ padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer', background: 'var(--red)', color: '#fff' }}>Delete</button><button onClick={() => setConfirm(null)} style={{ padding: '3px 8px', borderRadius: 6, fontSize: 11, border: 'none', cursor: 'pointer', background: 'transparent', color: 'var(--text-3)' }}>Cancel</button></>
+                      ) : (
+                        <button onClick={() => setConfirm(apt.id)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 500, border: 'none', cursor: 'pointer', background: 'transparent', color: 'var(--text-3)', transition: 'all 0.12s' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--red-light)'; e.currentTarget.style.color = 'var(--red)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; }}><Trash2 size={10} /> Delete</button>
+                      )}
+                    </div>
+                  </div>
+                  {(() => {
+                    const aptComments = comments.filter(c => c.aptId === apt.id);
+                    return aptComments.length > 0 ? (
+                      <CommentSection aptId={apt.id} comments={aptComments} onAddComment={onAddComment} isOwner={true} onDeleteComment={onDeleteComment} />
+                    ) : null;
+                  })()}
+                </div>
+              ) : (
+                // ── Friend card (simplified + comments) ──
+                <div
+                  key={apt.id}
+                  style={{
+                    background: 'var(--surface)', border: '1px solid var(--border)',
+                    borderLeft: `3px solid ${friendBorder}`, borderRadius: 12,
+                    boxShadow: '0 1px 3px rgba(26,21,18,0.05)', overflow: 'hidden',
+                  }}
+                >
+                  {/* Listing image at top */}
+                  {apt.listingImageUrl && (
+                    <div style={{ height: 180, overflow: 'hidden', background: 'var(--surface-2)' }}>
+                      <img src={apt.listingImageUrl} alt="Listing" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                        onError={e => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }} />
+                    </div>
+                  )}
+                  <div style={{ padding: '12px 14px' }}>
+                    {/* Neighborhood + toured badge */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4, gap: 8 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent)', lineHeight: 1.4 }}>
+                        {apt.neighborhood}
+                      </span>
+                      <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20, flexShrink: 0,
+                        background: toured ? '#ECFDF5' : 'var(--surface-2)',
+                        color: toured ? '#16803A' : 'var(--text-3)' }}>
+                        {toured ? '✓ Toured' : 'Not yet toured'}
+                      </span>
+                    </div>
+                    {/* Address */}
+                    <p style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.35, color: 'var(--text-1)', margin: '0 0 10px' }}>
+                      {shortAddress(apt.address, apt.aptNumber)}
+                    </p>
                     {/* Badges */}
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
-                      <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 5,
-                        background: 'var(--surface-2)', color: 'var(--text-2)' }}>
-                        {typeLabel(apt.type)}
-                      </span>
-                      {apt.monthlyCost > 0 && (
-                        <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 5,
-                          background: 'var(--accent-light)', color: 'var(--accent)' }}>
-                          ${apt.monthlyCost.toLocaleString()}/mo
-                        </span>
-                      )}
-                      {apt.laundry && (
-                        <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 5, display: 'flex',
-                          alignItems: 'center', gap: 4, background: 'var(--surface-2)', color: 'var(--text-2)' }}>
-                          <WashingMachine size={10} /> Laundry
-                        </span>
-                      )}
+                      <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 5, background: 'var(--surface-2)', color: 'var(--text-2)' }}>{typeLabel(apt.type)}</span>
+                      {apt.monthlyCost > 0 && <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 5, background: 'var(--accent-light)', color: 'var(--accent)' }}>${apt.monthlyCost.toLocaleString()}/mo</span>}
+                      {apt.laundry && <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 5, display: 'flex', alignItems: 'center', gap: 4, background: 'var(--surface-2)', color: 'var(--text-2)' }}><WashingMachine size={10} /> Laundry</span>}
                     </div>
-
                     {/* Inline ratings */}
                     <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
-                        <Sun size={12} style={{ color: 'var(--amber)' }} />
-                        <span style={{ fontWeight: 600, color: 'var(--amber)' }}>{apt.sunlight}</span>
-                        <span style={{ color: 'var(--text-3)' }}>/10</span>
-                      </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
-                        <UtensilsCrossed size={12} style={{ color: '#EA580C' }} />
-                        <span style={{ fontWeight: 600, color: '#EA580C' }}>{apt.kitchenUsable}</span>
-                        <span style={{ color: 'var(--text-3)' }}>/10</span>
-                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}><Sun size={12} style={{ color: 'var(--amber)' }} /><span style={{ fontWeight: 600, color: 'var(--amber)' }}>{apt.sunlight}</span><span style={{ color: 'var(--text-3)' }}>/10</span></span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}><UtensilsCrossed size={12} style={{ color: '#EA580C' }} /><span style={{ fontWeight: 600, color: '#EA580C' }}>{apt.kitchenUsable}</span><span style={{ color: 'var(--text-3)' }}>/10</span></span>
                     </div>
-
-                    {/* Listing image */}
-                    {apt.listingImageUrl && <ListingImage url={apt.listingImageUrl} />}
-
-                    {/* Available date */}
-                    {apt.availableDate && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12,
-                        color: 'var(--text-2)', marginBottom: 4 }}>
-                        <KeyRound size={11} /> Available {formatAvailDate(apt.availableDate)}
-                      </div>
-                    )}
-
-                    {/* Tour date */}
-                    {apt.tourStatus === 'upcoming' && apt.tourDate && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12,
-                        color: 'var(--accent)', marginBottom: 4 }}>
-                        <CalendarClock size={11} /> Tour: {formatTourDate(apt.tourDate)}
-                      </div>
-                    )}
-
-                    {/* AP availability */}
-                    {apt.tourStatus === 'pending_availability' && apt.apAvailability && (
-                      <div style={{ fontSize: 11, color: '#9A3412', background: '#FFF7ED',
-                        padding: '5px 8px', borderRadius: 6, marginBottom: 4 }}>
-                        <span style={{ fontWeight: 600, color: '#C2410C' }}>AP free: </span>
-                        {apt.apAvailability}
-                      </div>
-                    )}
-
-                    {/* Notes */}
-                    {apt.notes && (
-                      <p style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-3)',
-                        margin: '4px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {apt.notes}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Footer */}
-                  <div style={{ display: 'flex', alignItems: 'center', padding: '7px 14px',
-                    borderTop: '1px solid var(--border)', gap: 4 }}>
+                    {apt.availableDate && <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--text-2)', marginBottom: 8 }}><KeyRound size={11} /> Available {formatAvailDate(apt.availableDate)}</div>}
                     {apt.listingUrl && (
-                      <a
-                        href={apt.listingUrl} target="_blank" rel="noopener noreferrer"
-                        style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11,
-                          fontWeight: 500, color: 'var(--text-3)', textDecoration: 'none', transition: 'color 0.12s' }}
-                        onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
-                        onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-3)')}
-                      >
-                        <ExternalLink size={11} /> Listing
-                      </a>
+                      <a href={apt.listingUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 500, color: 'var(--text-3)', textDecoration: 'none' }} onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')} onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-3)')}><ExternalLink size={11} /> View listing</a>
                     )}
-                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 3 }}>
-                      <button
-                        onClick={() => onEdit(apt)}
-                        style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px',
-                          borderRadius: 6, fontSize: 11, fontWeight: 500, border: 'none', cursor: 'pointer',
-                          background: 'transparent', color: 'var(--text-3)', transition: 'all 0.12s' }}
-                        onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--accent)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; }}
-                      >
-                        <Pencil size={10} /> Edit
-                      </button>
-                      {confirming ? (
-                        <>
-                          <button
-                            onClick={() => { onDelete(apt.id); setConfirm(null); }}
-                            style={{ padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                              border: 'none', cursor: 'pointer', background: 'var(--red)', color: '#fff' }}
-                          >
-                            Delete
-                          </button>
-                          <button
-                            onClick={() => setConfirm(null)}
-                            style={{ padding: '3px 8px', borderRadius: 6, fontSize: 11, border: 'none',
-                              cursor: 'pointer', background: 'transparent', color: 'var(--text-3)' }}
-                          >
-                            Cancel
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => setConfirm(apt.id)}
-                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px',
-                            borderRadius: 6, fontSize: 11, fontWeight: 500, border: 'none', cursor: 'pointer',
-                            background: 'transparent', color: 'var(--text-3)', transition: 'all 0.12s' }}
-                          onMouseEnter={e => { e.currentTarget.style.background = 'var(--red-light)'; e.currentTarget.style.color = 'var(--red)'; }}
-                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; }}
-                        >
-                          <Trash2 size={10} /> Delete
-                        </button>
-                      )}
-                    </div>
                   </div>
+                  {/* Comments */}
+                  <CommentSection aptId={apt.id} comments={aptComments} onAddComment={onAddComment} isOwner={isOwner} onDeleteComment={onDeleteComment} />
                 </div>
               );
             })}

@@ -1,5 +1,14 @@
 export type TourStatus = 'not_contacted' | 'pending_availability' | 'upcoming' | 'toured';
 export type AppView = 'map' | 'list' | 'calendar';
+
+export interface Comment {
+  id: string;
+  aptId: string;
+  authorName: string;
+  text: string;
+  rating: number;
+  createdAt: string;
+}
 export type ApartmentType = 'studio' | '1br' | '2br' | '3br+';
 
 export interface Apartment {

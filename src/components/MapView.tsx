@@ -21,8 +21,9 @@ import {
   Loader2,
   Layers,
 } from "lucide-react";
-import { Apartment, TourStatus } from "../types";
+import { Apartment, TourStatus, Comment } from "../types";
 import { shortAddress } from "../utils/address";
+import { Stars, NAME_KEY } from "./CommentSection";
 
 // ── MTA subway line colors ────────────────────────────────────────────────────
 
@@ -66,10 +67,12 @@ const STATUS_COLORS: Record<TourStatus, string> = {
   toured: "#16803A",
 };
 
-function createApartmentIcon(status: TourStatus): L.DivIcon {
-  const color = STATUS_COLORS[status];
+function createApartmentIcon(status: TourStatus, isOwner: boolean): L.DivIcon {
+  const color = isOwner
+    ? STATUS_COLORS[status]
+    : status === 'toured' ? '#16803A' : '#6B7280';
   const badge =
-    status === "pending_availability"
+    isOwner && status === "pending_availability"
       ? `<circle cx="23" cy="5" r="6" fill="#fff" stroke="#fff" stroke-width="1"/>
        <circle cx="23" cy="5" r="5" fill="#EA580C"/>
        <text x="23" y="8.5" text-anchor="middle" fill="white" font-size="7" font-weight="bold" font-family="sans-serif">!</text>`
@@ -182,17 +185,31 @@ interface Props {
   onDelete: (id: string) => void;
   showList: boolean;
   listExpanded: boolean;
+  isOwner: boolean;
+  comments: Comment[];
+  onAddComment: (aptId: string, name: string, text: string, rating: number) => Promise<void>;
+  onDeleteComment: (id: string) => Promise<void>;
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function MapView({ apartments, onEdit, onDelete, showList, listExpanded }: Props) {
+export default function MapView({ apartments, onEdit, onDelete, showList, listExpanded, isOwner, comments, onAddComment, onDeleteComment }: Props) {
   const [subwayData, setSubwayData] = useState<SubwayData | null>(null);
   const [subwayLoading, setSubwayLoading] = useState(true);
   const [showSubway, setShowSubway] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const mapRef = useRef<L.Map | null>(null);
+
+  // Hunting call mini-form state
+  const [showCallForm, setShowCallForm]     = useState(false);
+  const [showCallsList, setShowCallsList]   = useState(false);
+  const [callName, setCallName]             = useState(() => localStorage.getItem(NAME_KEY) ?? '');
+  const [callText, setCallText]             = useState('');
+  const [callRating, setCallRating]         = useState(0);
+  const [callSubmitting, setCallSub]        = useState(false);
+
+  const resetCallForm = () => { setShowCallForm(false); setCallText(''); setCallRating(0); };
 
   const selectedApt = apartments.find((a) => a.id === selectedId) ?? null;
 
@@ -202,6 +219,8 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
       .catch(console.error)
       .finally(() => setSubwayLoading(false));
   }, []);
+
+  useEffect(() => { resetCallForm(); setShowCallsList(false); }, [selectedId]);
 
   return (
     <div className="relative w-full h-full">
@@ -299,7 +318,7 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
           <Marker
             key={apt.id}
             position={[apt.lat, apt.lng]}
-            icon={createApartmentIcon(apt.tourStatus)}
+            icon={createApartmentIcon(apt.tourStatus, isOwner)}
             eventHandlers={{
               click: () =>
                 setSelectedId((prev) => (prev === apt.id ? null : apt.id)),
@@ -426,30 +445,27 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
           >
             Apartments
           </p>
-          {(
-            [
-              "not_contacted",
-              "pending_availability",
-              "upcoming",
-              "toured",
-            ] as TourStatus[]
-          ).map((s) => (
-            <div key={s} className="flex items-center gap-2">
-              <div
-                className="w-2.5 h-2.5 rounded-full"
-                style={{ background: STATUS_COLORS[s] }}
-              />
-              <span style={{ color: "var(--text-2)" }}>
-                {s === "not_contacted"
-                  ? "Not contacted"
-                  : s === "pending_availability"
-                    ? "Pending AP"
-                    : s === "upcoming"
-                      ? "Upcoming tour"
-                      : "Toured"}
-              </span>
-            </div>
-          ))}
+          {isOwner ? (
+            (["not_contacted", "pending_availability", "upcoming", "toured"] as TourStatus[]).map((s) => (
+              <div key={s} className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ background: STATUS_COLORS[s] }} />
+                <span style={{ color: "var(--text-2)" }}>
+                  {s === "not_contacted" ? "Not contacted" : s === "pending_availability" ? "Pending AP" : s === "upcoming" ? "Upcoming tour" : "Toured"}
+                </span>
+              </div>
+            ))
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#16803A' }} />
+                <span style={{ color: "var(--text-2)" }}>Toured</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#6B7280' }} />
+                <span style={{ color: "var(--text-2)" }}>Not yet toured</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -584,7 +600,16 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
             </div>
 
             {/* Tour status */}
-            {selectedApt.tourStatus === "upcoming" && selectedApt.tourDate ? (
+            {!isOwner ? (
+              <div
+                className="text-[12px] font-medium px-2.5 py-1.5 rounded-lg"
+                style={selectedApt.tourStatus === 'toured'
+                  ? { background: '#ECFDF5', color: '#16803A' }
+                  : { background: 'var(--surface-2)', color: 'var(--text-3)' }}
+              >
+                {selectedApt.tourStatus === 'toured' ? '✓ Toured' : 'Not yet toured'}
+              </div>
+            ) : selectedApt.tourStatus === "upcoming" && selectedApt.tourDate ? (
               <div
                 className="flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1.5 rounded-lg"
                 style={{
@@ -663,8 +688,8 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
               </div>
             )}
 
-            {/* Notes */}
-            {selectedApt.notes && (
+            {/* Notes — owner only */}
+            {isOwner && selectedApt.notes && (
               <p
                 className="text-[12px] italic line-clamp-2"
                 style={{ color: "var(--text-3)" }}
@@ -673,10 +698,94 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
               </p>
             )}
 
+            {/* Hunting call inline form */}
+            {showCallForm && (
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-3)', margin: '0 0 8px' }}>
+                  Add hunting call
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  <input
+                    value={callName}
+                    onChange={e => { setCallName(e.target.value); localStorage.setItem(NAME_KEY, e.target.value); }}
+                    placeholder="Your name"
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '6px 9px', borderRadius: 7, fontSize: 12, border: '1.5px solid var(--border)', background: 'var(--bg)', color: 'var(--text-1)', outline: 'none' }}
+                    onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Stars value={callRating} onChange={setCallRating} size={17} />
+                    {callRating === 0 && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>tap to rate</span>}
+                  </div>
+                  <textarea
+                    value={callText}
+                    onChange={e => setCallText(e.target.value)}
+                    placeholder="What do you think?"
+                    rows={2}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '6px 9px', borderRadius: 7, fontSize: 12, border: '1.5px solid var(--border)', background: 'var(--bg)', color: 'var(--text-1)', outline: 'none', resize: 'none' }}
+                    onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+                  />
+                  <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
+                    <button type="button" onClick={resetCallForm} style={{ padding: '4px 10px', borderRadius: 7, fontSize: 11, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer' }}>Cancel</button>
+                    <button
+                      type="button"
+                      disabled={callSubmitting || !callName.trim() || !callText.trim() || !callRating}
+                      onClick={async () => {
+                        if (!selectedApt || !callName.trim() || !callText.trim() || !callRating) return;
+                        setCallSub(true);
+                        localStorage.setItem(NAME_KEY, callName.trim());
+                        await onAddComment(selectedApt.id, callName, callText, callRating);
+                        resetCallForm();
+                        setCallSub(false);
+                      }}
+                      style={{ padding: '4px 12px', borderRadius: 7, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer', color: '#fff', background: 'var(--accent)', opacity: (callSubmitting || !callName.trim() || !callText.trim() || !callRating) ? 0.5 : 1 }}
+                    >
+                      {callSubmitting ? 'Submitting…' : 'Submit'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Hunting calls dropdown */}
+            {(() => {
+              const aptCalls = comments.filter(c => c.aptId === selectedApt.id);
+              if (!showCallsList || aptCalls.length === 0) return null;
+              return (
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {aptCalls.map(c => (
+                      <div key={c.id} style={{ background: 'var(--bg)', borderRadius: 7, padding: '6px 8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-1)' }}>{c.authorName}</span>
+                          <Stars value={c.rating} size={11} />
+                          <span style={{ fontSize: 10, color: 'var(--text-3)', marginLeft: 'auto' }}>
+                            {new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </span>
+                          {isOwner && (
+                            <button
+                              onClick={() => onDeleteComment(c.id)}
+                              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-3)', padding: 0, flexShrink: 0 }}
+                              onMouseEnter={e => { e.currentTarget.style.color = 'var(--red)'; e.currentTarget.style.background = 'var(--red-light)'; }}
+                              onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)'; e.currentTarget.style.background = 'transparent'; }}
+                            >
+                              <Trash2 size={10} />
+                            </button>
+                          )}
+                        </div>
+                        <p style={{ fontSize: 11, color: 'var(--text-2)', margin: 0, lineHeight: 1.45 }}>{c.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Actions */}
             <div
               className="flex items-center gap-1 pt-1"
-              style={{ borderTop: "1px solid var(--border)" }}
+              style={{ borderTop: showCallForm ? 'none' : '1px solid var(--border)' }}
             >
               {selectedApt.listingUrl && (
                 <a
@@ -695,7 +804,36 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
                   <ExternalLink size={11} /> Listing
                 </a>
               )}
-              <div className="ml-auto flex gap-1">
+              {(() => {
+                const aptCalls = comments.filter(c => c.aptId === selectedApt.id);
+                return aptCalls.length > 0 ? (
+                  <button
+                    onClick={() => setShowCallsList(v => !v)}
+                    style={{
+                      fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 20,
+                      border: '1.5px solid var(--border)', cursor: 'pointer', transition: 'all 0.12s', whiteSpace: 'nowrap',
+                      background: showCallsList ? 'var(--accent)' : 'transparent',
+                      color: showCallsList ? '#fff' : 'var(--text-2)',
+                      borderColor: showCallsList ? 'var(--accent)' : 'var(--border)',
+                    }}
+                    onMouseEnter={e => { if (!showCallsList) { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}}
+                    onMouseLeave={e => { if (!showCallsList) { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-2)'; }}}
+                  >
+                    {aptCalls.length} {aptCalls.length === 1 ? 'call' : 'calls'} {showCallsList ? '▴' : '▾'}
+                  </button>
+                ) : null;
+              })()}
+              {!showCallForm && (
+                <button
+                  onClick={() => setShowCallForm(true)}
+                  style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 20, border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', transition: 'all 0.12s', whiteSpace: 'nowrap', marginLeft: selectedApt.listingUrl ? 'auto' : 0 }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-2)'; }}
+                >
+                  + Add hunting call
+                </button>
+              )}
+              {isOwner && <div className={`flex gap-1 ${selectedApt.listingUrl || !showCallForm ? 'ml-auto' : ''}`}>
                 <button
                   onClick={() => {
                     onEdit(selectedApt);
@@ -752,7 +890,7 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
                     <Trash2 size={11} /> Delete
                   </button>
                 )}
-              </div>
+              </div>}
             </div>
           </div>
         </div>
