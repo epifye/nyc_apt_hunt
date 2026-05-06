@@ -1,4 +1,5 @@
-export type TourStatus = 'not_contacted' | 'upcoming' | 'toured';
+export type TourStatus = 'not_contacted' | 'pending_availability' | 'upcoming' | 'toured';
+export type AppView = 'map' | 'list' | 'calendar';
 export type ApartmentType = 'studio' | '1br' | '2br' | '3br+';
 
 export interface Apartment {
@@ -16,6 +17,9 @@ export interface Apartment {
   tourStatus: TourStatus;
   tourDate?: string;
   availableDate?: string;
+  aptNumber?: string;
+  listingImageUrl?: string;
   listingUrl?: string;
+  apAvailability?: string;
   createdAt: string;
 }

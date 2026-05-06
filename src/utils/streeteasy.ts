@@ -2,6 +2,8 @@ import { ApartmentType } from '../types';
 
 export interface StreetEasyExtracted {
   address: string;
+  aptNumber?: string;
+  listingImageUrl?: string;
   monthlyCost?: number;
   type?: ApartmentType;
   neighborhood?: string;
@@ -23,6 +25,12 @@ export function parseStreetEasyHtml(html: string): StreetEasyExtracted {
   }
   const address = buildingAddressEl?.textContent?.trim()
     ?? `${unitAddressEl!.textContent!.trim()}, New York, NY`;
+
+  // Apt number — extract from unit address element (e.g. "Apt 7R", "#2F", "Unit 3B")
+  let aptNumber: string | undefined;
+  const unitText = unitAddressEl?.textContent?.trim() ?? '';
+  const aptMatch = unitText.match(/(?:#|Apt\.?\s+|Unit\s+)([A-Z0-9]+)/i);
+  if (aptMatch) aptNumber = aptMatch[1].toUpperCase();
 
   // Price — h4 inside data-testid="priceInfo"
   let monthlyCost: number | undefined;
@@ -68,6 +76,9 @@ export function parseStreetEasyHtml(html: string): StreetEasyExtracted {
     }
   }
 
+  // First carousel image — alt="photo 1" is the first image in the StreetEasy media carousel
+  const listingImageUrl = doc.querySelector('img[alt="photo 1"]')?.getAttribute('src') ?? undefined;
+
   // Listing URL — canonical link tag
   const listingUrl = doc.querySelector('link[rel="canonical"]')?.getAttribute('href') ?? undefined;
 
@@ -79,5 +90,5 @@ export function parseStreetEasyHtml(html: string): StreetEasyExtracted {
   const colonIdx = desc.indexOf(':');
   if (colonIdx !== -1) notes = desc.slice(colonIdx + 1).trim();
 
-  return { address, monthlyCost, type, neighborhood, laundry, availableDate, notes, listingUrl };
+  return { address, aptNumber, listingImageUrl, monthlyCost, type, neighborhood, laundry, availableDate, notes, listingUrl };
 }

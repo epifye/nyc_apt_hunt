@@ -45,14 +45,8 @@
   background: #e8e3da;
   font-family: 'Figtree', sans-serif !important;
 }
-.leaflet-control-zoom a {
-  font-family: 'Figtree', sans-serif !important;
-  color: var(--text-1) !important;
-  background: var(--surface) !important;
-  border-color: var(--border) !important;
-}
-.leaflet-control-zoom a:hover {
-  background: var(--surface-2) !important;
+.leaflet-control-zoom {
+  display: none !important;
 }
 .leaflet-tooltip {
   background: var(--surface) !important;
@@ -68,12 +62,28 @@
 
 /* ── Card hover ── */
 .apt-card {
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .apt-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(26,21,18,0.10);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(26,21,18,0.10);
 }
+
+/* ── List panel ── */
+.list-panel {
+  transition: transform 0.32s cubic-bezier(0.4,0,0.2,1), width 0.32s cubic-bezier(0.4,0,0.2,1), box-shadow 0.32s ease;
+}
+
+/* ── Scrollable pill bars ── */
+.pills-scroll {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  align-items: center;
+}
+.pills-scroll::-webkit-scrollbar { display: none; }
 
 /* ── Animations ── */
 @keyframes fadeUp {

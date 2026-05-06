@@ -2,80 +2,88 @@ import { useState } from 'react';
 import Header from './components/Header';
 import MapView from './components/MapView';
 import ListView from './components/ListView';
+import CalendarView from './components/CalendarView';
 import AddApartmentModal from './components/AddApartmentModal';
 import { useApartments } from './hooks/useApartments';
-import { Apartment } from './types';
-
-type View = 'map' | 'list';
+import { Apartment, AppView } from './types';
 
 export default function App() {
-  const [view, setView] = useState<View>('map');
+  const [view, setView]                 = useState<AppView>('map');
+  const [panelExpanded, setPanelExpanded] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingApartment, setEditingApartment] = useState<Apartment | null>(null);
 
-  const { apartments, addApartment, updateApartment, deleteApartment, replaceAll } = useApartments();
+  const { apartments, loading, addApartment, updateApartment, deleteApartment } = useApartments();
 
   const handleEdit = (apt: Apartment) => {
     setEditingApartment(apt);
     setShowAddModal(true);
   };
 
-  const handleModalClose = () => {
-    setShowAddModal(false);
-    setEditingApartment(null);
-  };
-
-  const handleSave = (data: Omit<Apartment, 'id' | 'createdAt'>) => {
+  const handleSave = async (data: Omit<Apartment, 'id' | 'createdAt'>) => {
     if (editingApartment) {
-      updateApartment(editingApartment.id, data);
+      await updateApartment(editingApartment.id, data);
     } else {
-      addApartment(data);
+      await addApartment(data);
     }
   };
 
-  const handleImport = (imported: Apartment[]) => {
-    const existing = apartments;
-    const existingIds = new Set(existing.map(a => a.id));
-    const newOnes = imported.filter(a => !existingIds.has(a.id));
-    const merged = [...existing, ...newOnes];
-    replaceAll(merged);
-    if (newOnes.length === 0) {
-      alert('All apartments in this file are already in your list.');
-    } else {
-      alert(`Imported ${newOnes.length} new apartment${newOnes.length > 1 ? 's' : ''}.`);
-    }
+  const handleSetView = (v: AppView) => {
+    setView(v);
+    if (v === 'map') setPanelExpanded(false);
   };
+
+  const panelOpen = view !== 'map';
 
   return (
     <div className="h-screen flex flex-col overflow-hidden" style={{ background: 'var(--bg)' }}>
       <Header
         view={view}
-        onViewChange={setView}
+        onSetView={handleSetView}
         onAddApartment={() => { setEditingApartment(null); setShowAddModal(true); }}
         apartmentCount={apartments.length}
-        apartments={apartments}
-        onImport={handleImport}
       />
 
-      <main className="flex-1 overflow-hidden">
-        {view === 'map' ? (
+      <main className="flex-1 overflow-hidden relative">
+        {/* Map always rendered as base layer */}
+        <div
+          className="absolute inset-0"
+          style={{ opacity: loading ? 0.4 : 1, transition: 'opacity 0.2s' }}
+        >
           <MapView
             apartments={apartments}
             onEdit={handleEdit}
             onDelete={deleteApartment}
+            showList={panelOpen}
+            listExpanded={panelExpanded}
           />
-        ) : (
-          <ListView
-            apartments={apartments}
-            onEdit={handleEdit}
-            onDelete={deleteApartment}
-          />
-        )}
+        </div>
+
+        {/* List panel */}
+        <ListView
+          apartments={apartments}
+          onEdit={handleEdit}
+          onDelete={deleteApartment}
+          show={view === 'list'}
+          isExpanded={panelExpanded}
+          onClose={() => { setView('map'); setPanelExpanded(false); }}
+          onToggleExpand={() => setPanelExpanded(v => !v)}
+        />
+
+        {/* Calendar panel */}
+        <CalendarView
+          apartments={apartments}
+          onEdit={handleEdit}
+          show={view === 'calendar'}
+          isExpanded={panelExpanded}
+          onClose={() => { setView('map'); setPanelExpanded(false); }}
+          onToggleExpand={() => setPanelExpanded(v => !v)}
+        />
       </main>
 
       {showAddModal && (
         <AddApartmentModal
-          onClose={handleModalClose}
+          onClose={() => { setShowAddModal(false); setEditingApartment(null); }}
           onSave={handleSave}
           editingApartment={editingApartment}
         />

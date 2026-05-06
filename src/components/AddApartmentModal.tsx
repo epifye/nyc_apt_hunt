@@ -11,9 +11,10 @@ interface Props {
 }
 
 const TOUR_OPTIONS: { value: TourStatus; label: string; desc: string }[] = [
-  { value: 'not_contacted', label: 'Not heard back', desc: 'Waiting on broker' },
-  { value: 'upcoming',      label: 'Tour scheduled', desc: 'Date confirmed' },
-  { value: 'toured',        label: 'Toured',          desc: 'Already visited' },
+  { value: 'not_contacted',       label: 'Not heard back',          desc: 'Waiting on broker' },
+  { value: 'pending_availability', label: "Pending AP avail.", desc: 'Response received' },
+  { value: 'upcoming',            label: 'Tour scheduled',          desc: 'Date confirmed' },
+  { value: 'toured',              label: 'Toured',                  desc: 'Already visited' },
 ];
 
 function Label({ children }: { children: React.ReactNode }) {
@@ -36,11 +37,70 @@ function TextInput({ className = '', style, ...props }: React.InputHTMLAttribute
   );
 }
 
+const selectCls = 'flex-1 rounded-lg px-3 py-2 text-[14px] outline-none appearance-none';
+const selectStyle = { background: 'var(--surface)', border: '1.5px solid var(--border)', color: 'var(--text-1)' };
+
+function TourDatePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [datePart, timePart] = value ? value.split('T') : ['', ''];
+  const [savedHour, savedMin] = timePart ? timePart.split(':') : ['', ''];
+
+  // Local state holds picks before all three fields are filled
+  const [localDate, setLocalDate] = useState(datePart);
+  const [localHour, setLocalHour] = useState(savedHour);
+  const [localMin,  setLocalMin]  = useState(savedMin || '00');
+
+  const commit = (d: string, h: string, m: string) => {
+    if (d && h) onChange(`${d}T${h.padStart(2, '0')}:${m || '00'}`);
+  };
+
+  return (
+    <div className="flex gap-2">
+      <input
+        type="date"
+        value={localDate}
+        onChange={e => { setLocalDate(e.target.value); commit(e.target.value, localHour, localMin); }}
+        className={selectCls}
+        style={selectStyle}
+        onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+        onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+      />
+      <select
+        value={localHour}
+        onChange={e => { setLocalHour(e.target.value); commit(localDate, e.target.value, localMin); }}
+        className={selectCls}
+        style={selectStyle}
+        onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+        onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+      >
+        <option value="">hr</option>
+        {Array.from({ length: 24 }, (_, i) => (
+          <option key={i} value={String(i).padStart(2, '0')}>
+            {i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`}
+          </option>
+        ))}
+      </select>
+      <select
+        value={localMin}
+        onChange={e => { setLocalMin(e.target.value); commit(localDate, localHour, e.target.value); }}
+        className={selectCls}
+        style={selectStyle}
+        onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+        onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+      >
+        {Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0')).map(m => (
+          <option key={m} value={m}>{m}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 export default function AddApartmentModal({ onClose, onSave, editingApartment }: Props) {
   const apt = editingApartment;
   const isEditing = !!apt;
 
   const [address,      setAddress]      = useState(apt?.address ?? '');
+  const [aptNumber,    setAptNumber]    = useState(apt?.aptNumber ?? '');
   const [neighborhood, setNeighborhood] = useState(apt?.neighborhood ?? '');
   const [lat,          setLat]          = useState<number | null>(apt?.lat ?? null);
   const [lng,          setLng]          = useState<number | null>(apt?.lng ?? null);
@@ -50,9 +110,11 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
   const [sunlight,     setSunlight]     = useState(apt?.sunlight ?? 5);
   const [kitchen,      setKitchen]      = useState(apt?.kitchenUsable ?? 5);
   const [tourStatus,   setTourStatus]   = useState<TourStatus>(apt?.tourStatus ?? 'not_contacted');
-  const [tourDate,     setTourDate]     = useState(apt?.tourDate ?? '');
-  const [notes,          setNotes]          = useState(apt?.notes ?? '');
-  const [listingUrl,     setListingUrl]     = useState(apt?.listingUrl ?? '');
+  const [tourDate,          setTourDate]          = useState(apt?.tourDate ?? '');
+  const [apAvailability, setApAvailability] = useState(apt?.apAvailability ?? '');
+  const [notes,            setNotes]            = useState(apt?.notes ?? '');
+  const [listingUrl,       setListingUrl]       = useState(apt?.listingUrl ?? '');
+  const [listingImageUrl,  setListingImageUrl]  = useState(apt?.listingImageUrl ?? '');
   const [availableDate,  setAvailableDate]  = useState(apt?.availableDate ?? '');
 
   const [geocoding,    setGeocoding]    = useState(false);
@@ -73,7 +135,9 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
       const data = parseStreetEasyHtml(seHtml);
 
       setAddress(data.address);
-      if (data.monthlyCost)   setMonthlyCost(String(data.monthlyCost));
+      if (data.aptNumber)       setAptNumber(data.aptNumber);
+      if (data.listingImageUrl) setListingImageUrl(data.listingImageUrl);
+      if (data.monthlyCost)     setMonthlyCost(String(data.monthlyCost));
       if (data.type)          setType(data.type);
       if (data.laundry)       setLaundry(data.laundry);
       if (data.notes)         setNotes(data.notes);
@@ -133,13 +197,16 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
     e.preventDefault();
     if (!lat || !lng) { setGeocodeError('Please click "Find" to locate the address.'); return; }
     onSave({
-      address: address.trim(), neighborhood, lat, lng, type, laundry,
+      address: address.trim(), aptNumber: aptNumber.trim() || undefined,
+      listingImageUrl: listingImageUrl.trim() || undefined,
+      neighborhood, lat, lng, type, laundry,
       monthlyCost: parseFloat(monthlyCost) || 0,
       sunlight, kitchenUsable: kitchen, tourStatus,
       tourDate: tourStatus === 'upcoming' ? tourDate : undefined,
       availableDate: availableDate || undefined,
       notes,
       listingUrl: listingUrl.trim() || undefined,
+      apAvailability: tourStatus === 'pending_availability' ? apAvailability.trim() || undefined : undefined,
     });
     onClose();
   };
@@ -243,7 +310,7 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
                   type="text"
                   value={address}
                   onChange={e => { setAddress(e.target.value); setGeocoded(false); setGeocodeError(''); }}
-                  placeholder="200 Allen Street #7R, New York, NY"
+                  placeholder="200 Allen Street, New York, NY"
                   required
                   className="flex-1 rounded-lg px-3 py-2 text-[14px] outline-none transition-all"
                   style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', color: 'var(--text-1)' }}
@@ -267,6 +334,16 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
                   <CheckCircle2 size={12} /> Mapped to: {neighborhood}
                 </p>
               )}
+            </div>
+
+            {/* ── Apt number ── */}
+            <div>
+              <Label>Apt / Unit # <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(optional)</span></Label>
+              <TextInput
+                value={aptNumber}
+                onChange={e => setAptNumber(e.target.value)}
+                placeholder="e.g. 7R, 2F, 15B"
+              />
             </div>
 
             {/* Neighborhood override */}
@@ -361,7 +438,7 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
             {/* Tour status */}
             <div>
               <Label>Tour Status</Label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {TOUR_OPTIONS.map(({ value, label, desc }) => (
                   <button key={value} type="button" onClick={() => setTourStatus(value)}
                     className="flex flex-col items-start gap-0.5 px-3 py-2.5 rounded-xl text-left transition-all"
@@ -378,10 +455,34 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
               </div>
             </div>
 
+            {tourStatus === 'pending_availability' && (
+              <div
+                className="rounded-xl p-3 space-y-2"
+                style={{ background: '#FFF7ED', border: '1.5px solid #FED7AA' }}
+              >
+                <p className="text-[12px] font-semibold" style={{ color: '#C2410C' }}>
+                  AP's available times
+                </p>
+                <textarea
+                  value={apAvailability}
+                  onChange={e => setApAvailability(e.target.value)}
+                  rows={3}
+                  placeholder="e.g. Tue May 12 after 2pm, Thu May 14 anytime…"
+                  className="w-full rounded-lg px-3 py-2 text-[13px] outline-none transition-all resize-none"
+                  style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', color: 'var(--text-1)' }}
+                  onFocus={e => (e.currentTarget.style.borderColor = '#EA580C')}
+                  onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+                />
+                <p className="text-[11px]" style={{ color: '#EA580C' }}>
+                  A pin notification will appear on the map to remind you to schedule.
+                </p>
+              </div>
+            )}
+
             {tourStatus === 'upcoming' && (
               <div>
-                <Label>Tour Date & Time <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(Eastern Time)</span></Label>
-                <TextInput type="datetime-local" value={tourDate} onChange={e => setTourDate(e.target.value)} />
+                <Label>Tour Date & Time</Label>
+                <TourDatePicker value={tourDate} onChange={setTourDate} />
               </div>
             )}
 
