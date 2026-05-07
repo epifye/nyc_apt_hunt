@@ -4,25 +4,31 @@ import MapView from './components/MapView';
 import ListView from './components/ListView';
 import CalendarView from './components/CalendarView';
 import AddApartmentModal from './components/AddApartmentModal';
+import AuthModal from './components/AuthModal';
 import { useApartments } from './hooks/useApartments';
 import { useBlockedSlots } from './hooks/useBlockedSlots';
+import { isOwnerSession, setOwnerSession } from './lib/auth';
 import { Apartment, AppView } from './types';
 
 export default function App() {
-  const [view, setView]                 = useState<AppView>('map');
+  const [view, setView]                   = useState<AppView>('map');
   const [panelExpanded, setPanelExpanded] = useState(false);
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [showAddModal, setShowAddModal]   = useState(false);
   const [editingApartment, setEditingApartment] = useState<Apartment | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [isOwner, setIsOwner]             = useState(isOwnerSession);
 
   const { apartments, loading, addApartment, updateApartment, deleteApartment } = useApartments();
   const { blockedSlots, addBlockedSlot, deleteBlockedSlot } = useBlockedSlots();
 
   const handleEdit = (apt: Apartment) => {
+    if (!isOwner) return;
     setEditingApartment(apt);
     setShowAddModal(true);
   };
 
   const handleSave = async (data: Omit<Apartment, 'id' | 'createdAt'>) => {
+    if (!isOwner) return;
     if (editingApartment) {
       await updateApartment(editingApartment.id, data);
     } else {
@@ -35,6 +41,22 @@ export default function App() {
     if (v === 'map') setPanelExpanded(false);
   };
 
+  const handleAuthClick = () => {
+    if (isOwner) {
+      setOwnerSession(false);
+      setIsOwner(false);
+      // Drop back to map if on calendar (owner-only)
+      if (view === 'calendar') setView('map');
+    } else {
+      setShowAuthModal(true);
+    }
+  };
+
+  const handleAuthSuccess = () => {
+    setIsOwner(true);
+    setShowAuthModal(false);
+  };
+
   const panelOpen = view !== 'map';
 
   return (
@@ -44,10 +66,11 @@ export default function App() {
         onSetView={handleSetView}
         onAddApartment={() => { setEditingApartment(null); setShowAddModal(true); }}
         apartmentCount={apartments.length}
+        isOwner={isOwner}
+        onAuthClick={handleAuthClick}
       />
 
       <main className="flex-1 overflow-hidden relative">
-        {/* Map always rendered as base layer */}
         <div
           className="absolute inset-0"
           style={{ opacity: loading ? 0.4 : 1, transition: 'opacity 0.2s' }}
@@ -55,42 +78,51 @@ export default function App() {
           <MapView
             apartments={apartments}
             onEdit={handleEdit}
-            onDelete={deleteApartment}
+            onDelete={isOwner ? deleteApartment : () => {}}
             showList={panelOpen}
             listExpanded={panelExpanded}
+            isOwner={isOwner}
           />
         </div>
 
-        {/* List panel */}
         <ListView
           apartments={apartments}
           onEdit={handleEdit}
-          onDelete={deleteApartment}
+          onDelete={isOwner ? deleteApartment : () => {}}
           show={view === 'list'}
           isExpanded={panelExpanded}
           onClose={() => { setView('map'); setPanelExpanded(false); }}
           onToggleExpand={() => setPanelExpanded(v => !v)}
+          isOwner={isOwner}
         />
 
-        {/* Calendar panel */}
-        <CalendarView
-          apartments={apartments}
-          onEdit={handleEdit}
-          blockedSlots={blockedSlots}
-          onAddBlockedSlot={addBlockedSlot}
-          onDeleteBlockedSlot={deleteBlockedSlot}
-          show={view === 'calendar'}
-          isExpanded={panelExpanded}
-          onClose={() => { setView('map'); setPanelExpanded(false); }}
-          onToggleExpand={() => setPanelExpanded(v => !v)}
-        />
+        {isOwner && (
+          <CalendarView
+            apartments={apartments}
+            onEdit={handleEdit}
+            blockedSlots={blockedSlots}
+            onAddBlockedSlot={addBlockedSlot}
+            onDeleteBlockedSlot={deleteBlockedSlot}
+            show={view === 'calendar'}
+            isExpanded={panelExpanded}
+            onClose={() => { setView('map'); setPanelExpanded(false); }}
+            onToggleExpand={() => setPanelExpanded(v => !v)}
+          />
+        )}
       </main>
 
-      {showAddModal && (
+      {isOwner && showAddModal && (
         <AddApartmentModal
           onClose={() => { setShowAddModal(false); setEditingApartment(null); }}
           onSave={handleSave}
           editingApartment={editingApartment}
+        />
+      )}
+
+      {showAuthModal && (
+        <AuthModal
+          onSuccess={handleAuthSuccess}
+          onClose={() => setShowAuthModal(false)}
         />
       )}
     </div>

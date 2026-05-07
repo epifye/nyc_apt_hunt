@@ -30,6 +30,7 @@ interface Props {
   isExpanded: boolean;
   onClose: () => void;
   onToggleExpand: () => void;
+  isOwner: boolean;
 }
 
 const STATUS_CONFIG: Record<TourStatus, { label: string; icon: React.ReactNode; bg: string; text: string; border: string }> = {
@@ -39,7 +40,14 @@ const STATUS_CONFIG: Record<TourStatus, { label: string; icon: React.ReactNode; 
   toured:               { label: 'Toured',        icon: <CheckCircle2 size={10} />,      bg: '#ECFDF5', text: '#16803A', border: '#16803A' },
 };
 
-const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+const PUBLIC_STATUS_NOT_TOURED = { label: 'Not yet toured', icon: null as React.ReactNode, bg: '#F3F4F6', text: '#6B7280', border: '#9CA3AF' };
+
+function visibleStatus(apt: { tourStatus: TourStatus }, isOwner: boolean) {
+  if (isOwner) return STATUS_CONFIG[apt.tourStatus];
+  return apt.tourStatus === 'toured' ? STATUS_CONFIG.toured : PUBLIC_STATUS_NOT_TOURED;
+}
+
+const SORT_OPTIONS_OWNER: { key: SortKey; label: string }[] = [
   { key: 'tourDate',      label: 'Tour date' },
   { key: 'createdAt',     label: 'Added' },
   { key: 'monthlyCost',   label: 'Rent' },
@@ -48,12 +56,24 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'neighborhood',  label: 'Neighborhood' },
 ];
 
-const FILTER_OPTIONS: { value: TourStatus | 'all'; label: string }[] = [
+const SORT_OPTIONS_PUBLIC: { key: SortKey; label: string }[] = [
+  { key: 'monthlyCost',  label: 'Rent' },
+  { key: 'createdAt',    label: 'Added' },
+  { key: 'neighborhood', label: 'Neighborhood' },
+];
+
+const FILTER_OPTIONS_OWNER: { value: TourStatus | 'all' | 'not_toured'; label: string }[] = [
   { value: 'all',                  label: 'All' },
   { value: 'not_contacted',        label: 'Not contacted' },
   { value: 'pending_availability', label: 'Tentative' },
   { value: 'upcoming',             label: 'Upcoming' },
   { value: 'toured',               label: 'Toured' },
+];
+
+const FILTER_OPTIONS_PUBLIC: { value: TourStatus | 'all' | 'not_toured'; label: string }[] = [
+  { value: 'all',       label: 'All' },
+  { value: 'toured',    label: 'Toured' },
+  { value: 'not_toured', label: 'Not toured' },
 ];
 
 function typeLabel(t: string) {
@@ -142,10 +162,11 @@ interface CompactRowProps {
   confirming: boolean;
   onConfirm: () => void;
   onCancelConfirm: () => void;
+  isOwner: boolean;
 }
 
-function CompactRow({ apt, onEdit, onDelete, confirming, onConfirm, onCancelConfirm }: CompactRowProps) {
-  const status = STATUS_CONFIG[apt.tourStatus];
+function CompactRow({ apt, onEdit, onDelete, confirming, onConfirm, onCancelConfirm, isOwner }: CompactRowProps) {
+  const status = visibleStatus(apt, isOwner);
   const [hovered, setHovered] = useState(false);
 
   const actionBtn: React.CSSProperties = {
@@ -194,7 +215,7 @@ function CompactRow({ apt, onEdit, onDelete, confirming, onConfirm, onCancelConf
 
       {/* Tour badge — fixed-width slot (empty when no badge) */}
       <div style={{ width: 76, flexShrink: 0 }}>
-        {apt.tourStatus === 'upcoming' && apt.tourDate && (
+        {isOwner && apt.tourStatus === 'upcoming' && apt.tourDate && (
           <span style={{
             fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 5,
             background: '#EBF1FD', color: 'var(--accent)', whiteSpace: 'nowrap',
@@ -202,7 +223,7 @@ function CompactRow({ apt, onEdit, onDelete, confirming, onConfirm, onCancelConf
             {formatTourDateShort(apt.tourDate)}
           </span>
         )}
-        {apt.tourStatus === 'pending_availability' && (
+        {isOwner && apt.tourStatus === 'pending_availability' && (
           <span style={{
             fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 5,
             background: '#FFFBEB', color: '#B45309', border: '1px dashed #F59E0B', whiteSpace: 'nowrap',
@@ -220,8 +241,8 @@ function CompactRow({ apt, onEdit, onDelete, confirming, onConfirm, onCancelConf
         </span>
       )}
 
-      {/* Actions */}
-      <div style={{ display: 'flex', gap: 1, flexShrink: 0, opacity: hovered || confirming ? 1 : 0, transition: 'opacity 0.15s' }}>
+      {/* Actions — owner only */}
+      {isOwner && <div style={{ display: 'flex', gap: 1, flexShrink: 0, opacity: hovered || confirming ? 1 : 0, transition: 'opacity 0.15s' }}>
         {confirming ? (
           <>
             <button
@@ -257,20 +278,31 @@ function CompactRow({ apt, onEdit, onDelete, confirming, onConfirm, onCancelConf
             </button>
           </>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ListView({ apartments, onEdit, onDelete, show, isExpanded, onClose, onToggleExpand }: Props) {
+export default function ListView({ apartments, onEdit, onDelete, show, isExpanded, onClose, onToggleExpand, isOwner }: Props) {
   const isMobile = useIsMobile();
-  const [sortKey, setSortKey]         = useState<SortKey>('tourDate');
+  const [sortKey, setSortKey]         = useState<SortKey>(isOwner ? 'tourDate' : 'monthlyCost');
   const [sortDir, setSortDir]         = useState<SortDir>('asc');
-  const [filterStatus, setFilter]     = useState<TourStatus | 'all'>('all');
+  const [filterStatus, setFilter]     = useState<TourStatus | 'all' | 'not_toured'>('all');
   const [confirmDeleteId, setConfirm] = useState<string | null>(null);
   const [isCompact, setIsCompact]     = useState(false);
+
+  useEffect(() => {
+    if (!isOwner) {
+      setSortKey('monthlyCost');
+      setSortDir('asc');
+      setFilter('all');
+    }
+  }, [isOwner]);
+
+  const sortOptions  = isOwner ? SORT_OPTIONS_OWNER  : SORT_OPTIONS_PUBLIC;
+  const filterOptions = isOwner ? FILTER_OPTIONS_OWNER : FILTER_OPTIONS_PUBLIC;
 
   const handleSort = (key: SortKey) => {
     if (key === sortKey) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -278,7 +310,11 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
   };
 
   const sorted = [...apartments]
-    .filter(a => filterStatus === 'all' || a.tourStatus === filterStatus)
+    .filter(a => {
+      if (filterStatus === 'all') return true;
+      if (filterStatus === 'not_toured') return a.tourStatus !== 'toured';
+      return a.tourStatus === filterStatus;
+    })
     .sort((a, b) => {
       let va: number | string = 0, vb: number | string = 0;
       switch (sortKey) {
@@ -372,7 +408,7 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
         <div className="pills-scroll" style={{ padding: '0 14px 5px' }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase',
             letterSpacing: '0.07em', flexShrink: 0, marginRight: 3, lineHeight: '24px' }}>Sort</span>
-          {SORT_OPTIONS.map(({ key, label }) => (
+          {sortOptions.map(({ key, label }) => (
             <button
               key={key} onClick={() => handleSort(key)}
               style={{ ...pillBase,
@@ -390,7 +426,7 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
         <div className="pills-scroll" style={{ padding: '0 14px 10px' }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase',
             letterSpacing: '0.07em', flexShrink: 0, marginRight: 3, lineHeight: '24px' }}>Filter</span>
-          {FILTER_OPTIONS.map(({ value, label }) => (
+          {filterOptions.map(({ value, label }) => (
             <button
               key={value} onClick={() => setFilter(value)}
               style={{ ...pillBase,
@@ -431,6 +467,7 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
                 confirming={confirmDeleteId === apt.id}
                 onConfirm={() => setConfirm(apt.id)}
                 onCancelConfirm={() => setConfirm(null)}
+                isOwner={isOwner}
               />
             ))}
           </div>
@@ -438,7 +475,7 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
           // ── Card view ──
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {sorted.map(apt => {
-              const status = STATUS_CONFIG[apt.tourStatus];
+              const status = visibleStatus(apt, isOwner);
               const confirming = confirmDeleteId === apt.id;
               return (
                 <div
@@ -523,16 +560,16 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
                       </div>
                     )}
 
-                    {/* Tour date */}
-                    {apt.tourStatus === 'upcoming' && apt.tourDate && (
+                    {/* Tour date — owner only */}
+                    {isOwner && apt.tourStatus === 'upcoming' && apt.tourDate && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12,
                         color: 'var(--accent)', marginBottom: 4 }}>
                         <CalendarClock size={11} /> Tour: {formatTourDate(apt.tourDate)}
                       </div>
                     )}
 
-                    {/* Tentative tour */}
-                    {apt.tourStatus === 'pending_availability' && apt.tentativeTourDate && (
+                    {/* Tentative tour — owner only */}
+                    {isOwner && apt.tourStatus === 'pending_availability' && apt.tentativeTourDate && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12,
                         color: '#B45309', marginBottom: 4 }}>
                         <CalendarClock size={11} /> Tentative: {formatTourDate(apt.tentativeTourDate)}
@@ -563,7 +600,7 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
                       </a>
                     )}
                     <div style={{ marginLeft: 'auto', display: 'flex', gap: 3 }}>
-                      <button
+                      {isOwner && <button
                         onClick={() => onEdit(apt)}
                         style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px',
                           borderRadius: 6, fontSize: 11, fontWeight: 500, border: 'none', cursor: 'pointer',
@@ -572,8 +609,8 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
                         onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; }}
                       >
                         <Pencil size={10} /> Edit
-                      </button>
-                      {confirming ? (
+                      </button>}
+                      {isOwner && confirming ? (
                         <>
                           <button
                             onClick={() => { onDelete(apt.id); setConfirm(null); }}
@@ -590,7 +627,7 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
                             Cancel
                           </button>
                         </>
-                      ) : (
+                      ) : isOwner ? (
                         <button
                           onClick={() => setConfirm(apt.id)}
                           style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px',
@@ -601,7 +638,7 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
                         >
                           <Trash2 size={10} /> Delete
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 </div>

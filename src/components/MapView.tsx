@@ -27,6 +27,16 @@ import { Apartment, TourStatus } from "../types";
 import { shortAddress } from "../utils/address";
 import ImageLightbox from "./ImageLightbox";
 
+function useIsMobile() {
+  const [v, setV] = useState(window.innerWidth < 640);
+  useEffect(() => {
+    const h = () => setV(window.innerWidth < 640);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+  return v;
+}
+
 // ── MTA subway line colors ────────────────────────────────────────────────────
 
 const MTA_COLORS: Record<string, string> = {
@@ -69,8 +79,8 @@ const STATUS_COLORS: Record<TourStatus, string> = {
   toured: "#16803A",
 };
 
-function createApartmentIcon(status: TourStatus): L.DivIcon {
-  const color = STATUS_COLORS[status];
+function createApartmentIcon(status: TourStatus, colorOverride?: string): L.DivIcon {
+  const color = colorOverride ?? STATUS_COLORS[status];
   const badge =
     status === "pending_availability"
       ? `<circle cx="23" cy="5" r="6" fill="#fff" stroke="#fff" stroke-width="1"/>
@@ -144,14 +154,6 @@ async function fetchSubwayData(): Promise<SubwayData> {
 
 // ── FlyTo helper ──────────────────────────────────────────────────────────────
 
-function FlyToApartment({ lat, lng }: { lat: number; lng: number }) {
-  const map = useMap();
-  useEffect(() => {
-    map.flyTo([lat, lng], Math.max(map.getZoom(), 15), { duration: 0.8 });
-  }, [lat, lng, map]);
-  return null;
-}
-
 // ── CARTO vector basemap ──────────────────────────────────────────────────────
 
 function CartoBasemap() {
@@ -177,14 +179,14 @@ function MapRefCapture({ mapRef }: { mapRef: React.MutableRefObject<L.Map | null
 
 // ── Helper formatters ─────────────────────────────────────────────────────────
 
-function MapListingCarousel({ urls }: { urls: string[] }) {
+function MapListingCarousel({ urls, imgHeight = 140 }: { urls: string[], imgHeight?: number }) {
   const [idx, setIdx] = useState(0);
   const [hidden, setHidden] = useState(false);
   const [lightbox, setLightbox] = useState(false);
   if (hidden || !urls.length) return null;
   return (
     <>
-      <div style={{ margin: '4px -16px', height: 140, overflow: 'hidden', background: 'var(--surface-2)', position: 'relative', cursor: 'zoom-in' }}>
+      <div style={{ margin: '4px -16px', height: imgHeight, overflow: 'hidden', background: 'var(--surface-2)', position: 'relative', cursor: 'zoom-in' }}>
         <img
           key={urls[idx]}
           src={urls[idx]}
@@ -249,17 +251,30 @@ interface Props {
   onDelete: (id: string) => void;
   showList: boolean;
   listExpanded: boolean;
+  isOwner: boolean;
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function MapView({ apartments, onEdit, onDelete, showList, listExpanded }: Props) {
+export default function MapView({ apartments, onEdit, onDelete, showList, listExpanded, isOwner }: Props) {
+  const isMobile = useIsMobile();
   const [subwayData, setSubwayData] = useState<SubwayData | null>(null);
   const [subwayLoading, setSubwayLoading] = useState(true);
   const [showSubway, setShowSubway] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const savedSelectedId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (showList) {
+      savedSelectedId.current = selectedId;
+      setSelectedId(null);
+    } else if (savedSelectedId.current) {
+      setSelectedId(savedSelectedId.current);
+      savedSelectedId.current = null;
+    }
+  }, [showList]);
 
   const selectedApt = apartments.find((a) => a.id === selectedId) ?? null;
 
@@ -362,10 +377,29 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
           <Marker
             key={apt.id}
             position={[apt.lat, apt.lng]}
-            icon={createApartmentIcon(apt.tourStatus)}
+            icon={createApartmentIcon(
+              apt.tourStatus,
+              !isOwner && apt.tourStatus !== 'toured' ? '#9CA3AF' : undefined
+            )}
             eventHandlers={{
-              click: () =>
-                setSelectedId((prev) => (prev === apt.id ? null : apt.id)),
+              click: () => {
+                setSelectedId((prev) => {
+                  if (prev === apt.id) return null;
+                  const m = mapRef.current;
+                  if (m) {
+                    const zoom = Math.max(m.getZoom(), 15);
+                    if (isMobile) {
+                      const offsetPx = m.getSize().y / 3;
+                      const pt = m.project([apt.lat, apt.lng], zoom);
+                      const newCenter = m.unproject(pt.add([0, offsetPx]), zoom);
+                      m.flyTo(newCenter, zoom, { duration: 0.8 });
+                    } else {
+                      m.flyTo([apt.lat, apt.lng], zoom, { duration: 0.8 });
+                    }
+                  }
+                  return apt.id;
+                });
+              },
             }}
           >
             <Tooltip direction="top" offset={[0, -42]} opacity={0.95}>
@@ -373,11 +407,6 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
             </Tooltip>
           </Marker>
         ))}
-
-        {/* Fly to selected */}
-        {selectedApt && (
-          <FlyToApartment lat={selectedApt.lat} lng={selectedApt.lng} />
-        )}
 
         <MapRefCapture mapRef={mapRef} />
       </MapContainer>
@@ -489,43 +518,63 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
           >
             Apartments
           </p>
-          {(
-            [
-              "not_contacted",
-              "pending_availability",
-              "upcoming",
-              "toured",
-            ] as TourStatus[]
-          ).map((s) => (
-            <div key={s} className="flex items-center gap-2">
-              <div
-                className="w-2.5 h-2.5 rounded-full"
-                style={{ background: STATUS_COLORS[s] }}
-              />
-              <span style={{ color: "var(--text-2)" }}>
-                {s === "not_contacted"
-                  ? "Not contacted"
-                  : s === "pending_availability"
-                    ? "Tentative"
-                    : s === "upcoming"
-                      ? "Upcoming tour"
-                      : "Toured"}
-              </span>
-            </div>
-          ))}
+          {isOwner ? (
+            (["not_contacted", "pending_availability", "upcoming", "toured"] as TourStatus[]).map((s) => (
+              <div key={s} className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ background: STATUS_COLORS[s] }} />
+                <span style={{ color: "var(--text-2)" }}>
+                  {s === "not_contacted" ? "Not contacted"
+                    : s === "pending_availability" ? "Tentative"
+                    : s === "upcoming" ? "Upcoming tour"
+                    : "Toured"}
+                </span>
+              </div>
+            ))
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ background: STATUS_COLORS.toured }} />
+                <span style={{ color: "var(--text-2)" }}>Toured</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ background: "#9CA3AF" }} />
+                <span style={{ color: "var(--text-2)" }}>Not yet toured</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
       {/* ── Selected apartment panel ── */}
       {selectedApt && (
         <div
-          className="panel-enter absolute top-3 right-3 z-[1000] w-72 rounded-2xl overflow-hidden"
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            boxShadow: "0 12px 40px rgba(26,21,18,0.14)",
+          className="panel-enter absolute z-[1000]"
+          style={isMobile ? {
+            left: 0, right: 0, bottom: 0,
+            borderRadius: '18px 18px 0 0',
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+            borderBottom: 'none',
+            boxShadow: '0 -8px 32px rgba(26,21,18,0.18)',
+            height: '66%',
+            overflowY: 'auto',
+            overflowX: 'hidden',
+          } : {
+            top: 12, right: 12,
+            width: 288,
+            borderRadius: 16,
+            overflow: 'hidden',
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+            boxShadow: '0 12px 40px rgba(26,21,18,0.14)',
           }}
         >
+          {/* Mobile drag handle */}
+          {isMobile && (
+            <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 10, paddingBottom: 4 }}>
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)' }} />
+            </div>
+          )}
           {/* Panel header */}
           <div className="flex items-start justify-between gap-2 px-4 pt-3 pb-2">
             <div className="flex-1 min-w-0">
@@ -647,18 +696,15 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
             </div>
 
             {/* Tour status */}
-            {selectedApt.tourStatus === "upcoming" && selectedApt.tourDate ? (
+            {isOwner && selectedApt.tourStatus === "upcoming" && selectedApt.tourDate ? (
               <div
                 className="flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1.5 rounded-lg"
-                style={{
-                  background: "var(--accent-light)",
-                  color: "var(--accent)",
-                }}
+                style={{ background: "var(--accent-light)", color: "var(--accent)" }}
               >
                 <CalendarClock size={12} />
                 Tour: {formatDate(selectedApt.tourDate)}
               </div>
-            ) : selectedApt.tourStatus === "pending_availability" ? (
+            ) : isOwner && selectedApt.tourStatus === "pending_availability" ? (
               <div
                 className="flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1.5 rounded-lg"
                 style={{ background: "#FFFBEB", color: "#B45309", border: "1px dashed #F59E0B" }}
@@ -675,17 +721,14 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
               >
                 ✓ Toured
               </div>
-            ) : (
+            ) : isOwner ? (
               <div
                 className="text-[12px] font-medium px-2.5 py-1.5 rounded-lg"
-                style={{
-                  background: "var(--surface-2)",
-                  color: "var(--text-3)",
-                }}
+                style={{ background: "var(--surface-2)", color: "var(--text-3)" }}
               >
                 Not yet contacted
               </div>
-            )}
+            ) : null}
 
             {/* Available date */}
             {selectedApt.availableDate && (
@@ -711,6 +754,7 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
             {(selectedApt.listingImageUrls?.length || selectedApt.listingImageUrl) && (
               <MapListingCarousel
                 urls={selectedApt.listingImageUrls ?? (selectedApt.listingImageUrl ? [selectedApt.listingImageUrl] : [])}
+                imgHeight={isMobile ? 180 : 140}
               />
             )}
 
@@ -747,7 +791,7 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
                 </a>
               )}
               <div className="ml-auto flex gap-1">
-                <button
+                {isOwner && <button
                   onClick={() => {
                     onEdit(selectedApt);
                     setSelectedId(null);
@@ -764,8 +808,8 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
                   }}
                 >
                   <Pencil size={11} /> Edit
-                </button>
-                {confirmDeleteId === selectedApt.id ? (
+                </button>}
+                {isOwner && confirmDeleteId === selectedApt.id ? (
                   <>
                     <button
                       onClick={() => {
@@ -786,7 +830,7 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
                       Cancel
                     </button>
                   </>
-                ) : (
+                ) : isOwner ? (
                   <button
                     onClick={() => setConfirmDeleteId(selectedApt.id)}
                     className="flex items-center gap-1 px-2 py-1 text-[12px] font-medium rounded-md transition-all"
@@ -802,7 +846,7 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
                   >
                     <Trash2 size={11} /> Delete
                   </button>
-                )}
+                ) : null}
               </div>
             </div>
           </div>
