@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { Apartment, TourStatus } from "../types";
 import { shortAddress } from "../utils/address";
+import ImageLightbox from "./ImageLightbox";
 
 // ── MTA subway line colors ────────────────────────────────────────────────────
 
@@ -158,6 +159,55 @@ function MapRefCapture({ mapRef }: { mapRef: React.MutableRefObject<L.Map | null
 }
 
 // ── Helper formatters ─────────────────────────────────────────────────────────
+
+function MapListingCarousel({ urls }: { urls: string[] }) {
+  const [idx, setIdx] = useState(0);
+  const [hidden, setHidden] = useState(false);
+  const [lightbox, setLightbox] = useState(false);
+  if (hidden || !urls.length) return null;
+  return (
+    <>
+      <div style={{ margin: '4px -16px', height: 140, overflow: 'hidden', background: 'var(--surface-2)', position: 'relative', cursor: 'zoom-in' }}>
+        <img
+          key={urls[idx]}
+          src={urls[idx]}
+          alt="Listing"
+          onClick={() => setLightbox(true)}
+          onError={() => setHidden(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
+        {urls.length > 1 && (
+          <>
+            {idx > 0 && (
+              <button onClick={e => { e.stopPropagation(); setIdx(i => i - 1); }}
+                style={{ position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)',
+                  background: 'rgba(0,0,0,0.45)', border: 'none', borderRadius: '50%',
+                  width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', color: '#fff', fontSize: 14, lineHeight: 1 }}
+              >‹</button>
+            )}
+            {idx < urls.length - 1 && (
+              <button onClick={e => { e.stopPropagation(); setIdx(i => i + 1); }}
+                style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+                  background: 'rgba(0,0,0,0.45)', border: 'none', borderRadius: '50%',
+                  width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', color: '#fff', fontSize: 14, lineHeight: 1 }}
+              >›</button>
+            )}
+            <div style={{ position: 'absolute', bottom: 5, left: 0, right: 0, display: 'flex', justifyContent: 'center', gap: 4 }}>
+              {urls.map((_, i) => (
+                <div key={i} onClick={e => { e.stopPropagation(); setIdx(i); }}
+                  style={{ width: i === idx ? 14 : 5, height: 5, borderRadius: 3,
+                    background: i === idx ? '#fff' : 'rgba(255,255,255,0.5)', cursor: 'pointer', transition: 'width 0.2s' }} />
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+      {lightbox && <ImageLightbox urls={urls} initialIdx={idx} onClose={() => setLightbox(false)} />}
+    </>
+  );
+}
 
 function typeLabel(t: string) {
   return (
@@ -443,7 +493,7 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
                 {s === "not_contacted"
                   ? "Not contacted"
                   : s === "pending_availability"
-                    ? "Pending AP"
+                    ? "Tentative"
                     : s === "upcoming"
                       ? "Upcoming tour"
                       : "Toured"}
@@ -596,21 +646,14 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
                 Tour: {formatDate(selectedApt.tourDate)}
               </div>
             ) : selectedApt.tourStatus === "pending_availability" ? (
-              <div className="space-y-1.5">
-                <div
-                  className="text-[12px] font-semibold px-2.5 py-1.5 rounded-lg"
-                  style={{ background: "#FFF7ED", color: "#C2410C" }}
-                >
-                  ⚠ Schedule tour — AP is free:
-                </div>
-                {selectedApt.apAvailability && (
-                  <div
-                    className="text-[12px] px-2.5 py-1.5 rounded-lg"
-                    style={{ background: "#FFF7ED", color: "#9A3412" }}
-                  >
-                    {selectedApt.apAvailability}
-                  </div>
-                )}
+              <div
+                className="flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1.5 rounded-lg"
+                style={{ background: "#FFFBEB", color: "#B45309", border: "1px dashed #F59E0B" }}
+              >
+                <CalendarClock size={12} />
+                {selectedApt.tentativeTourDate
+                  ? `Tentative: ${formatDate(selectedApt.tentativeTourDate)}`
+                  : "Tentative — no time set"}
               </div>
             ) : selectedApt.tourStatus === "toured" ? (
               <div
@@ -651,16 +694,11 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
               </div>
             )}
 
-            {/* Listing image */}
-            {selectedApt.listingImageUrl && (
-              <div style={{ margin: '4px -16px', height: 140, overflow: 'hidden', background: 'var(--surface-2)' }}>
-                <img
-                  src={selectedApt.listingImageUrl}
-                  alt="Listing"
-                  onError={e => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                />
-              </div>
+            {/* Listing image(s) */}
+            {(selectedApt.listingImageUrls?.length || selectedApt.listingImageUrl) && (
+              <MapListingCarousel
+                urls={selectedApt.listingImageUrls ?? (selectedApt.listingImageUrl ? [selectedApt.listingImageUrl] : [])}
+              />
             )}
 
             {/* Notes */}

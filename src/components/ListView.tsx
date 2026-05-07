@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Apartment, TourStatus } from '../types';
 import { shortAddress } from '../utils/address';
+import ImageLightbox from './ImageLightbox';
 
 type SortKey = 'monthlyCost' | 'sunlight' | 'kitchenUsable' | 'tourDate' | 'neighborhood' | 'createdAt';
 type SortDir = 'asc' | 'desc';
@@ -33,7 +34,7 @@ interface Props {
 
 const STATUS_CONFIG: Record<TourStatus, { label: string; icon: React.ReactNode; bg: string; text: string; border: string }> = {
   not_contacted:        { label: 'Not contacted', icon: <MessageSquareOff size={10} />, bg: '#F9F2F1', text: '#B54040', border: '#DC2626' },
-  pending_availability: { label: 'Pending AP',    icon: <Users size={10} />,            bg: '#FFF7ED', text: '#C2410C', border: '#EA580C' },
+  pending_availability: { label: 'Tentative',     icon: <Users size={10} />,            bg: '#FFFBEB', text: '#B45309', border: '#F59E0B' },
   upcoming:             { label: 'Upcoming tour', icon: <Clock size={10} />,             bg: '#EBF1FD', text: '#1D57D8', border: '#1D57D8' },
   toured:               { label: 'Toured',        icon: <CheckCircle2 size={10} />,      bg: '#ECFDF5', text: '#16803A', border: '#16803A' },
 };
@@ -50,7 +51,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 const FILTER_OPTIONS: { value: TourStatus | 'all'; label: string }[] = [
   { value: 'all',                  label: 'All' },
   { value: 'not_contacted',        label: 'Not contacted' },
-  { value: 'pending_availability', label: 'Pending AP' },
+  { value: 'pending_availability', label: 'Tentative' },
   { value: 'upcoming',             label: 'Upcoming' },
   { value: 'toured',               label: 'Toured' },
 ];
@@ -79,18 +80,56 @@ function formatAvailDate(iso: string) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function ListingImage({ url }: { url: string }) {
+function ListingImage({ urls }: { urls: string[] }) {
+  const [idx, setIdx] = useState(0);
   const [failed, setFailed] = useState(false);
-  if (failed) return null;
+  const [lightbox, setLightbox] = useState(false);
+  if (!urls.length || failed) return null;
+  const hasPrev = idx > 0;
+  const hasNext = idx < urls.length - 1;
   return (
-    <div style={{ margin: '10px -14px', position: 'relative', height: 160, background: 'var(--surface-2)', overflow: 'hidden' }}>
-      <img
-        src={url}
-        alt="Listing"
-        onError={() => setFailed(true)}
-        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-      />
-    </div>
+    <>
+      <div style={{ margin: '10px -14px', position: 'relative', height: 160, background: 'var(--surface-2)', overflow: 'hidden', cursor: 'zoom-in' }}>
+        <img
+          key={urls[idx]}
+          src={urls[idx]}
+          alt="Listing"
+          onClick={e => { e.stopPropagation(); setLightbox(true); }}
+          onError={() => setFailed(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
+        {urls.length > 1 && (
+          <>
+            {hasPrev && (
+              <button
+                onClick={e => { e.stopPropagation(); setIdx(i => i - 1); }}
+                style={{ position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)',
+                  background: 'rgba(0,0,0,0.45)', border: 'none', borderRadius: '50%',
+                  width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', color: '#fff', fontSize: 14, lineHeight: 1 }}
+              >‹</button>
+            )}
+            {hasNext && (
+              <button
+                onClick={e => { e.stopPropagation(); setIdx(i => i + 1); }}
+                style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+                  background: 'rgba(0,0,0,0.45)', border: 'none', borderRadius: '50%',
+                  width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', color: '#fff', fontSize: 14, lineHeight: 1 }}
+              >›</button>
+            )}
+            <div style={{ position: 'absolute', bottom: 5, left: 0, right: 0, display: 'flex', justifyContent: 'center', gap: 4 }}>
+              {urls.map((_, i) => (
+                <div key={i} onClick={e => { e.stopPropagation(); setIdx(i); }}
+                  style={{ width: i === idx ? 14 : 5, height: 5, borderRadius: 3,
+                    background: i === idx ? '#fff' : 'rgba(255,255,255,0.5)', cursor: 'pointer', transition: 'width 0.2s' }} />
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+      {lightbox && <ImageLightbox urls={urls} initialIdx={idx} onClose={() => setLightbox(false)} />}
+    </>
   );
 }
 
@@ -145,33 +184,33 @@ function CompactRow({ apt, onEdit, onDelete, confirming, onConfirm, onCancelConf
         </span>
       </div>
 
-      {/* Rent */}
-      {apt.monthlyCost > 0 && (
-        <span style={{
-          fontSize: 12, fontWeight: 600, color: 'var(--accent)',
-          flexShrink: 0, fontVariantNumeric: 'tabular-nums',
-        }}>
-          ${apt.monthlyCost.toLocaleString()}
-        </span>
-      )}
+      {/* Rent — fixed-width slot so it always lands in the same column */}
+      <span style={{
+        width: 56, textAlign: 'right', flexShrink: 0,
+        fontSize: 12, fontWeight: 600, color: 'var(--accent)', fontVariantNumeric: 'tabular-nums',
+      }}>
+        {apt.monthlyCost > 0 ? `$${apt.monthlyCost.toLocaleString()}` : ''}
+      </span>
 
-      {/* Tour badge */}
-      {apt.tourStatus === 'upcoming' && apt.tourDate && (
-        <span style={{
-          fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 5, flexShrink: 0,
-          background: '#EBF1FD', color: 'var(--accent)',
-        }}>
-          {formatTourDateShort(apt.tourDate)}
-        </span>
-      )}
-      {apt.tourStatus === 'pending_availability' && (
-        <span style={{
-          fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 5, flexShrink: 0,
-          background: '#FFF7ED', color: '#C2410C',
-        }}>
-          Pending AP
-        </span>
-      )}
+      {/* Tour badge — fixed-width slot (empty when no badge) */}
+      <div style={{ width: 76, flexShrink: 0 }}>
+        {apt.tourStatus === 'upcoming' && apt.tourDate && (
+          <span style={{
+            fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 5,
+            background: '#EBF1FD', color: 'var(--accent)', whiteSpace: 'nowrap',
+          }}>
+            {formatTourDateShort(apt.tourDate)}
+          </span>
+        )}
+        {apt.tourStatus === 'pending_availability' && (
+          <span style={{
+            fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 5,
+            background: '#FFFBEB', color: '#B45309', border: '1px dashed #F59E0B', whiteSpace: 'nowrap',
+          }}>
+            Tentative
+          </span>
+        )}
+      </div>
       {apt.tourStatus === 'toured' && (
         <span style={{
           fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 5, flexShrink: 0,
@@ -472,7 +511,9 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
                     </div>
 
                     {/* Listing image */}
-                    {apt.listingImageUrl && <ListingImage url={apt.listingImageUrl} />}
+                    {(apt.listingImageUrls?.length || apt.listingImageUrl) && (
+                      <ListingImage urls={apt.listingImageUrls ?? (apt.listingImageUrl ? [apt.listingImageUrl] : [])} />
+                    )}
 
                     {/* Available date */}
                     {apt.availableDate && (
@@ -490,12 +531,11 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
                       </div>
                     )}
 
-                    {/* AP availability */}
-                    {apt.tourStatus === 'pending_availability' && apt.apAvailability && (
-                      <div style={{ fontSize: 11, color: '#9A3412', background: '#FFF7ED',
-                        padding: '5px 8px', borderRadius: 6, marginBottom: 4 }}>
-                        <span style={{ fontWeight: 600, color: '#C2410C' }}>AP free: </span>
-                        {apt.apAvailability}
+                    {/* Tentative tour */}
+                    {apt.tourStatus === 'pending_availability' && apt.tentativeTourDate && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12,
+                        color: '#B45309', marginBottom: 4 }}>
+                        <CalendarClock size={11} /> Tentative: {formatTourDate(apt.tentativeTourDate)}
                       </div>
                     )}
 

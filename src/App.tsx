@@ -5,6 +5,7 @@ import ListView from './components/ListView';
 import CalendarView from './components/CalendarView';
 import AddApartmentModal from './components/AddApartmentModal';
 import { useApartments } from './hooks/useApartments';
+import { useBlockedSlots } from './hooks/useBlockedSlots';
 import { Apartment, AppView } from './types';
 
 export default function App() {
@@ -14,6 +15,7 @@ export default function App() {
   const [editingApartment, setEditingApartment] = useState<Apartment | null>(null);
 
   const { apartments, loading, addApartment, updateApartment, deleteApartment } = useApartments();
+  const { blockedSlots, addBlockedSlot, deleteBlockedSlot } = useBlockedSlots();
 
   const handleEdit = (apt: Apartment) => {
     setEditingApartment(apt);
@@ -74,6 +76,9 @@ export default function App() {
         <CalendarView
           apartments={apartments}
           onEdit={handleEdit}
+          blockedSlots={blockedSlots}
+          onAddBlockedSlot={addBlockedSlot}
+          onDeleteBlockedSlot={deleteBlockedSlot}
           show={view === 'calendar'}
           isExpanded={panelExpanded}
           onClose={() => { setView('map'); setPanelExpanded(false); }}

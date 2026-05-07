@@ -12,7 +12,7 @@ interface Props {
 
 const TOUR_OPTIONS: { value: TourStatus; label: string; desc: string }[] = [
   { value: 'not_contacted',       label: 'Not heard back',          desc: 'Waiting on broker' },
-  { value: 'pending_availability', label: "Pending AP avail.", desc: 'Response received' },
+  { value: 'pending_availability', label: 'Tentative',          desc: 'Tentative time set' },
   { value: 'upcoming',            label: 'Tour scheduled',          desc: 'Date confirmed' },
   { value: 'toured',              label: 'Toured',                  desc: 'Already visited' },
 ];
@@ -111,19 +111,21 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
   const [kitchen,      setKitchen]      = useState(apt?.kitchenUsable ?? 5);
   const [tourStatus,   setTourStatus]   = useState<TourStatus>(apt?.tourStatus ?? 'not_contacted');
   const [tourDate,          setTourDate]          = useState(apt?.tourDate ?? '');
-  const [apAvailability, setApAvailability] = useState(apt?.apAvailability ?? '');
+  const [tentativeTourDate, setTentativeTourDate] = useState(apt?.tentativeTourDate ?? '');
   const [notes,            setNotes]            = useState(apt?.notes ?? '');
   const [listingUrl,       setListingUrl]       = useState(apt?.listingUrl ?? '');
   const [listingImageUrl,  setListingImageUrl]  = useState(apt?.listingImageUrl ?? '');
+  const [listingImageUrls, setListingImageUrls] = useState<string[]>(apt?.listingImageUrls ?? []);
   const [availableDate,  setAvailableDate]  = useState(apt?.availableDate ?? '');
 
   const [geocoding,    setGeocoding]    = useState(false);
   const [geocodeError, setGeocodeError] = useState('');
   const [geocoded,     setGeocoded]     = useState(isEditing);
 
-  const [seHtml,    setSeHtml]    = useState('');
-  const [seError,   setSeError]   = useState('');
-  const [seFilled,  setSeFilled]  = useState(false);
+  const [seHtml,       setSeHtml]       = useState('');
+  const [seError,      setSeError]      = useState('');
+  const [seFilled,     setSeFilled]     = useState(false);
+  const [showUpdatePanel, setShowUpdatePanel] = useState(false);
 
   // ── StreetEasy autofill ───────────────────────────────────────────────────
 
@@ -137,6 +139,7 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
       setAddress(data.address);
       if (data.aptNumber)       setAptNumber(data.aptNumber);
       if (data.listingImageUrl) setListingImageUrl(data.listingImageUrl);
+      if (data.listingImageUrls) setListingImageUrls(data.listingImageUrls);
       if (data.monthlyCost)     setMonthlyCost(String(data.monthlyCost));
       if (data.type)          setType(data.type);
       if (data.laundry)       setLaundry(data.laundry);
@@ -203,10 +206,11 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
       monthlyCost: parseFloat(monthlyCost) || 0,
       sunlight, kitchenUsable: kitchen, tourStatus,
       tourDate: tourStatus === 'upcoming' ? tourDate : undefined,
+      tentativeTourDate: tourStatus === 'pending_availability' ? tentativeTourDate || undefined : undefined,
       availableDate: availableDate || undefined,
       notes,
       listingUrl: listingUrl.trim() || undefined,
-      apAvailability: tourStatus === 'pending_availability' ? apAvailability.trim() || undefined : undefined,
+      listingImageUrls: listingImageUrls.length ? listingImageUrls : undefined,
     });
     onClose();
   };
@@ -244,63 +248,63 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
           <div className="px-5 py-4 space-y-5">
 
-            {/* ── StreetEasy autofill ── */}
+            {/* ── StreetEasy autofill (add mode only) ── */}
             {!isEditing && (
-              <div
-                className="rounded-xl p-4 space-y-3"
-                style={{ background: 'var(--accent-light)', border: '1.5px solid #c7d9f8' }}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Sparkles size={14} style={{ color: 'var(--accent)' }} />
-                    <span className="text-[13px] font-semibold" style={{ color: 'var(--accent)' }}>
-                      Autofill from StreetEasy
+              <>
+                <div
+                  className="rounded-xl p-4 space-y-3"
+                  style={{ background: 'var(--accent-light)', border: '1.5px solid #c7d9f8' }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Sparkles size={14} style={{ color: 'var(--accent)' }} />
+                      <span className="text-[13px] font-semibold" style={{ color: 'var(--accent)' }}>
+                        Autofill from StreetEasy
+                      </span>
+                    </div>
+                    <span className="text-[11px]" style={{ color: 'var(--accent)' }}>
+                      View Source → Select All → Paste
                     </span>
                   </div>
-                  <span className="text-[11px]" style={{ color: 'var(--accent)' }}>
-                    View Source → Select All → Paste
-                  </span>
-                </div>
-                <textarea
-                  value={seHtml}
-                  onChange={e => { setSeHtml(e.target.value); setSeError(''); setSeFilled(false); }}
-                  placeholder="Paste the full page source here (Cmd+A then Cmd+C on the view-source page)…"
-                  rows={3}
-                  className="w-full rounded-lg px-3 py-2 text-[12px] outline-none transition-all resize-none font-mono"
-                  style={{
-                    background: 'var(--surface)',
-                    border: `1.5px solid ${seFilled ? 'var(--green)' : 'var(--border)'}`,
-                    color: 'var(--text-2)',
-                  }}
-                  onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
-                  onBlur={e => (e.currentTarget.style.borderColor = seFilled ? 'var(--green)' : 'var(--border)')}
-                />
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-[12px]" style={{ color: 'var(--accent)' }}>
-                    {seError && <span style={{ color: 'var(--red)' }}>{seError}</span>}
-                    {seFilled && (
-                      <span className="flex items-center gap-1" style={{ color: 'var(--green)' }}>
-                        <CheckCircle2 size={12} /> Form filled — review and adjust below
-                      </span>
-                    )}
-                    {!seFilled && !seError && 'Or fill in manually below ↓'}
+                  <textarea
+                    value={seHtml}
+                    onChange={e => { setSeHtml(e.target.value); setSeError(''); setSeFilled(false); }}
+                    placeholder="Paste the full page source here (Cmd+A then Cmd+C on the view-source page)…"
+                    rows={3}
+                    className="w-full rounded-lg px-3 py-2 text-[12px] outline-none transition-all resize-none font-mono"
+                    style={{
+                      background: 'var(--surface)',
+                      border: `1.5px solid ${seFilled ? 'var(--green)' : 'var(--border)'}`,
+                      color: 'var(--text-2)',
+                    }}
+                    onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                    onBlur={e => (e.currentTarget.style.borderColor = seFilled ? 'var(--green)' : 'var(--border)')}
+                  />
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-[12px]" style={{ color: 'var(--accent)' }}>
+                      {seError && <span style={{ color: 'var(--red)' }}>{seError}</span>}
+                      {seFilled && (
+                        <span className="flex items-center gap-1" style={{ color: 'var(--green)' }}>
+                          <CheckCircle2 size={12} /> Form filled — review and adjust below
+                        </span>
+                      )}
+                      {!seFilled && !seError && 'Or fill in manually below ↓'}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleStreetEasyFill}
+                      disabled={!seHtml.trim()}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-semibold text-white transition-opacity disabled:opacity-40 shrink-0"
+                      style={{ background: 'var(--accent)' }}
+                    >
+                      <Sparkles size={13} />
+                      Fill
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleStreetEasyFill}
-                    disabled={!seHtml.trim()}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-semibold text-white transition-opacity disabled:opacity-40 shrink-0"
-                    style={{ background: 'var(--accent)' }}
-                  >
-                    <Sparkles size={13} />
-                    Fill
-                  </button>
                 </div>
-              </div>
+                <div style={{ borderTop: '1px solid var(--border)' }} />
+              </>
             )}
-
-            {/* ── Divider if autofill shown ── */}
-            {!isEditing && <div style={{ borderTop: '1px solid var(--border)' }} />}
 
             {/* ── Address ── */}
             <div>
@@ -440,7 +444,12 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
               <Label>Tour Status</Label>
               <div className="grid grid-cols-2 gap-2">
                 {TOUR_OPTIONS.map(({ value, label, desc }) => (
-                  <button key={value} type="button" onClick={() => setTourStatus(value)}
+                  <button key={value} type="button" onClick={() => {
+                    setTourStatus(value);
+                    if (value === 'upcoming' && !tourDate && tentativeTourDate) {
+                      setTourDate(tentativeTourDate);
+                    }
+                  }}
                     className="flex flex-col items-start gap-0.5 px-3 py-2.5 rounded-xl text-left transition-all"
                     style={
                       tourStatus === value
@@ -461,20 +470,11 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
                 style={{ background: '#FFF7ED', border: '1.5px solid #FED7AA' }}
               >
                 <p className="text-[12px] font-semibold" style={{ color: '#C2410C' }}>
-                  AP's available times
+                  Tentative tour time
                 </p>
-                <textarea
-                  value={apAvailability}
-                  onChange={e => setApAvailability(e.target.value)}
-                  rows={3}
-                  placeholder="e.g. Tue May 12 after 2pm, Thu May 14 anytime…"
-                  className="w-full rounded-lg px-3 py-2 text-[13px] outline-none transition-all resize-none"
-                  style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', color: 'var(--text-1)' }}
-                  onFocus={e => (e.currentTarget.style.borderColor = '#EA580C')}
-                  onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
-                />
+                <TourDatePicker value={tentativeTourDate} onChange={setTentativeTourDate} />
                 <p className="text-[11px]" style={{ color: '#EA580C' }}>
-                  A pin notification will appear on the map to remind you to schedule.
+                  Shows as tentative on the calendar. Promote to "Tour scheduled" to confirm.
                 </p>
               </div>
             )}
@@ -520,9 +520,73 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
             </div>
           </div>
 
+          {/* Update-source panel (edit mode, toggled from footer) */}
+          {isEditing && showUpdatePanel && (
+            <div className="px-5 py-4 space-y-3 shrink-0"
+              style={{ borderTop: '1px solid var(--border)', background: 'var(--accent-light)' }}>
+              <div className="flex items-center justify-between">
+                <span className="text-[13px] font-semibold" style={{ color: 'var(--accent)' }}>
+                  Update from StreetEasy
+                </span>
+                <span className="text-[11px]" style={{ color: 'var(--accent)' }}>
+                  View Source → Select All → Paste
+                </span>
+              </div>
+              <textarea
+                value={seHtml}
+                onChange={e => { setSeHtml(e.target.value); setSeError(''); setSeFilled(false); }}
+                placeholder="Paste the full page source here (Cmd+A then Cmd+C on the view-source page)…"
+                rows={3}
+                className="w-full rounded-lg px-3 py-2 text-[12px] outline-none transition-all resize-none font-mono"
+                style={{
+                  background: 'var(--surface)',
+                  border: `1.5px solid ${seFilled ? 'var(--green)' : 'var(--border)'}`,
+                  color: 'var(--text-2)',
+                }}
+                onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                onBlur={e => (e.currentTarget.style.borderColor = seFilled ? 'var(--green)' : 'var(--border)')}
+              />
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-[12px]">
+                  {seError && <span style={{ color: 'var(--red)' }}>{seError}</span>}
+                  {seFilled && (
+                    <span className="flex items-center gap-1" style={{ color: 'var(--green)' }}>
+                      <CheckCircle2 size={12} /> Fields updated — review above
+                    </span>
+                  )}
+                  {!seFilled && !seError && <span style={{ color: 'var(--accent)' }}>Re-parse to refresh all fields &amp; images</span>}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleStreetEasyFill}
+                  disabled={!seHtml.trim()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-semibold text-white transition-opacity disabled:opacity-40 shrink-0"
+                  style={{ background: 'var(--accent)' }}
+                >
+                  <Sparkles size={13} />
+                  Update
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Footer */}
-          <div className="flex justify-end items-center gap-3 px-5 py-4 shrink-0"
+          <div className="flex items-center gap-3 px-5 py-4 shrink-0"
             style={{ borderTop: '1px solid var(--border)', background: 'var(--bg)' }}>
+            {isEditing && (
+              <button
+                type="button"
+                onClick={() => { setShowUpdatePanel(v => !v); setSeError(''); setSeFilled(false); }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-full text-[13px] font-medium transition-colors"
+                style={{ color: showUpdatePanel ? 'var(--accent)' : 'var(--text-3)',
+                  background: showUpdatePanel ? 'var(--accent-light)' : 'transparent',
+                  border: `1px solid ${showUpdatePanel ? 'var(--accent)' : 'transparent'}` }}
+              >
+                <Sparkles size={13} />
+                Update source
+              </button>
+            )}
+            <div className="flex-1" />
             <button type="button" onClick={onClose}
               className="px-4 py-2 text-[13px] font-medium rounded-full transition-colors"
               style={{ color: 'var(--text-2)' }}

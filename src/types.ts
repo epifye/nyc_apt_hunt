@@ -1,4 +1,13 @@
 export type TourStatus = 'not_contacted' | 'pending_availability' | 'upcoming' | 'toured';
+
+export interface BlockedSlot {
+  id: string;
+  date: string;       // YYYY-MM-DD
+  startTime: string;  // HH:MM (24h)
+  endTime: string;    // HH:MM (24h)
+  label?: string;
+  createdAt: string;
+}
 export type AppView = 'map' | 'list' | 'calendar';
 export type ApartmentType = 'studio' | '1br' | '2br' | '3br+';
 
@@ -19,7 +28,8 @@ export interface Apartment {
   availableDate?: string;
   aptNumber?: string;
   listingImageUrl?: string;
+  listingImageUrls?: string[];
   listingUrl?: string;
-  apAvailability?: string;
+  tentativeTourDate?: string;
   createdAt: string;
 }

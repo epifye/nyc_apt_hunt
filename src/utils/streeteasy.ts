@@ -4,6 +4,7 @@ export interface StreetEasyExtracted {
   address: string;
   aptNumber?: string;
   listingImageUrl?: string;
+  listingImageUrls?: string[];
   monthlyCost?: number;
   type?: ApartmentType;
   neighborhood?: string;
@@ -76,8 +77,18 @@ export function parseStreetEasyHtml(html: string): StreetEasyExtracted {
     }
   }
 
-  // First carousel image — alt="photo 1" is the first image in the StreetEasy media carousel
-  const listingImageUrl = doc.querySelector('img[alt="photo 1"]')?.getAttribute('src') ?? undefined;
+  // Carousel images — all alt="photo N" images, excluding the map thumbnail
+  // Prefer the 1500w srcset URL when available
+  const carouselImgs = Array.from(
+    doc.querySelectorAll('[data-testid="media-carousel-component"] img[alt^="photo"]')
+  );
+  const listingImageUrls: string[] = carouselImgs.map(img => {
+    const srcset = img.getAttribute('srcset') ?? '';
+    const large = srcset.split(',').map(s => s.trim()).find(s => s.includes('1500w'));
+    return large ? large.replace(/\s+\d+w$/, '').trim() : (img.getAttribute('src') ?? '');
+  }).filter(Boolean);
+
+  const listingImageUrl = listingImageUrls[0] ?? undefined;
 
   // Listing URL — canonical link tag
   const listingUrl = doc.querySelector('link[rel="canonical"]')?.getAttribute('href') ?? undefined;
@@ -90,5 +101,5 @@ export function parseStreetEasyHtml(html: string): StreetEasyExtracted {
   const colonIdx = desc.indexOf(':');
   if (colonIdx !== -1) notes = desc.slice(colonIdx + 1).trim();
 
-  return { address, aptNumber, listingImageUrl, monthlyCost, type, neighborhood, laundry, availableDate, notes, listingUrl };
+  return { address, aptNumber, listingImageUrl, listingImageUrls: listingImageUrls.length ? listingImageUrls : undefined, monthlyCost, type, neighborhood, laundry, availableDate, notes, listingUrl };
 }
