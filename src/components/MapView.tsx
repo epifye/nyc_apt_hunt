@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import {
   MapContainer,
-  TileLayer,
   GeoJSON,
   CircleMarker,
   Marker,
@@ -9,6 +8,9 @@ import {
   useMap,
 } from "react-leaflet";
 import L from "leaflet";
+import "maplibre-gl/dist/maplibre-gl.css";
+import "@maplibre/maplibre-gl-leaflet";
+import { DEFAULT_MAP_STYLE, cartoTransformRequest, CARTO_ATTRIBUTION } from "../lib/basemap";
 import {
   X,
   ExternalLink,
@@ -150,6 +152,21 @@ function FlyToApartment({ lat, lng }: { lat: number; lng: number }) {
   return null;
 }
 
+// ── CARTO vector basemap ──────────────────────────────────────────────────────
+
+function CartoBasemap() {
+  const map = useMap();
+  useEffect(() => {
+    const layer = L.maplibreGL({
+      style: DEFAULT_MAP_STYLE,
+      transformRequest: cartoTransformRequest,
+      attribution: CARTO_ATTRIBUTION,
+    } as L.LeafletMaplibreGLOptions).addTo(map);
+    return () => { map.removeLayer(layer); };
+  }, [map]);
+  return null;
+}
+
 // ── Capture map ref ───────────────────────────────────────────────────────────
 
 function MapRefCapture({ mapRef }: { mapRef: React.MutableRefObject<L.Map | null> }) {
@@ -266,11 +283,7 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
         }}
         zoomControl={false}
       >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-          maxZoom={20}
-        />
+        <CartoBasemap />
 
         {/* Subway lines */}
         {showSubway && subwayData?.lines && (
