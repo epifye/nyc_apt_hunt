@@ -12,8 +12,8 @@ interface Props {
 
 export default function Header({ view, onSetView, onAddApartment, apartmentCount, isOwner, onAuthClick }: Props) {
   const tabs = [
-    { v: 'map'  as AppView, icon: <Map size={13} />,          label: 'Map'      },
-    { v: 'list' as AppView, icon: <List size={13} />,         label: 'List'     },
+    { v: 'map'      as AppView, icon: <Map size={13} />,          label: 'Map'      },
+    { v: 'list'     as AppView, icon: <List size={13} />,         label: 'List'     },
     ...(isOwner
       ? [{ v: 'calendar' as AppView, icon: <CalendarDays size={13} />, label: 'Calendar' }]
       : []),
@@ -35,19 +35,25 @@ export default function Header({ view, onSetView, onAddApartment, apartmentCount
           onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
         >
           NYC
-          {/* Lock indicator */}
           <span
             className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center"
             style={{ background: isOwner ? '#22C55E' : '#9CA3AF' }}
           >
-            {isOwner
-              ? <Unlock size={8} color="#fff" />
-              : <Lock size={8} color="#fff" />}
+            {isOwner ? <Unlock size={8} color="#fff" /> : <Lock size={8} color="#fff" />}
           </span>
         </button>
+
         <div className="min-w-0">
-          <span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 15, letterSpacing: '-0.03em', color: 'var(--text-1)', lineHeight: 1.25 }}>
-            Eli's Apartment Hunting in the Concrete Jungle
+          <span style={{
+            fontFamily: 'Syne, sans-serif',
+            fontWeight: 800,
+            fontSize: 'clamp(14px, 4vw, 22px)',
+            letterSpacing: '-0.03em',
+            color: 'var(--text-1)',
+            lineHeight: 1.25,
+          }}>
+            Eli's Apartment Hunting
+            <span style={{ color: 'var(--accent)' }}> in the Concrete Jungle</span>
           </span>
           {apartmentCount > 0 && (
             <span className="hidden sm:inline-flex text-[11px] font-medium px-2 py-0.5 rounded-full ml-2" style={{ background: 'var(--surface-2)', color: 'var(--text-3)' }}>
@@ -63,7 +69,7 @@ export default function Header({ view, onSetView, onAddApartment, apartmentCount
           <button
             key={v}
             onClick={() => onSetView(v)}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full text-[13px] font-medium transition-all"
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium transition-all"
             style={
               view === v
                 ? { background: 'var(--surface)', color: 'var(--text-1)', boxShadow: '0 1px 3px rgba(26,21,18,0.10)' }

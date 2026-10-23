@@ -61,3 +61,52 @@ How sharing works:
 2. Send the file to your friend (AirDrop, iMessage, email, whatever)
 3. They open the same GitHub Pages URL, click Import, pick the file
 4. Import is merge-based — it only adds apartments they don't already have, so running it twice won't create duplicates
+
+Free tier (starting out):
+
+┌──────────┬─────────────────────────────────────────────────┬──────┐  
+ │ Service │ Free limits │ Cost │
+├──────────┼─────────────────────────────────────────────────┼──────┤  
+ │ Supabase │ 2 projects, 500MB DB, 1GB storage, 50k MAU auth │ $0 │
+├──────────┼─────────────────────────────────────────────────┼──────┤  
+ │ Vercel │ unlimited static deploys, 100GB bandwidth │ $0 │  
+ ├──────────┼─────────────────────────────────────────────────┼──────┤
+│ Total │ │ $0 │  
+ └──────────┴─────────────────────────────────────────────────┴──────┘
+
+Fine for personal use or early pilots with a few brokers.
+
+---
+
+Production / first paying brokers:
+
+┌──────────────┬────────────────────────────────────────────────────────┬────────────┐
+│ Service │ Plan │ Cost │
+├──────────────┼────────────────────────────────────────────────────────┼────────────┤
+│ Supabase Pro │ 8GB DB, 100GB storage, no project pause, daily backups │ $25/month │
+├──────────────┼────────────────────────────────────────────────────────┼────────────┤
+│ Vercel Pro │ more bandwidth, team features, analytics │ $20/month │  
+ ├──────────────┼────────────────────────────────────────────────────────┼────────────┤  
+ │ Domain │ Cloudflare │ ~$1/month │  
+ ├──────────────┼────────────────────────────────────────────────────────┼────────────┤  
+ │ Total │ │ ~$46/month │
+└──────────────┴────────────────────────────────────────────────────────┴────────────┘
+
+Vercel Pro is optional — you can stay on Vercel free for a long time if traffic is low. Static SPA with no serverless functions rarely hits free tier limits.
+
+---
+
+At 10 brokers paying you $50/month each = $500 MRR:
+
+You're still on the same $46/month infra. Supabase Pro handles 10 tenants easily. Margin is ~90%.
+
+Supabase doesn't charge per tenant — one project can serve all brokers with proper row-level security. You'd only add a second Supabase project if a broker demanded fully isolated data  
+ (enterprise contract).
+
+---
+
+When costs actually scale:
+
+- Supabase bumps at ~$0.09/GB extra storage, $0.09/GB egress — only matters with lots of listing images
+- Vercel bumps if you add serverless functions (you probably won't need them)
+- Real cost pressure hits around 100+ active brokers, not before

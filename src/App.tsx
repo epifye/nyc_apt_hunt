@@ -17,8 +17,12 @@ export default function App() {
   const [editingApartment, setEditingApartment] = useState<Apartment | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isOwner, setIsOwner]             = useState(isOwnerSession);
+  const [focusAptId, setFocusAptId]       = useState<string | null>(null);
+  const [showArchived, setShowArchived]   = useState(false);
 
   const { apartments, loading, addApartment, updateApartment, deleteApartment } = useApartments();
+  const visibleApartments  = showArchived ? apartments : apartments.filter(a => !a.archived);
+  const calendarApartments = apartments.filter(a => !a.archived || a.tourStatus === 'toured');
   const { blockedSlots, addBlockedSlot, deleteBlockedSlot } = useBlockedSlots();
 
   const handleEdit = (apt: Apartment) => {
@@ -60,7 +64,7 @@ export default function App() {
   const panelOpen = view !== 'map';
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden" style={{ background: 'var(--bg)' }}>
+    <div className="flex flex-col overflow-hidden" style={{ background: 'var(--bg)', height: '100dvh' }}>
       <Header
         view={view}
         onSetView={handleSetView}
@@ -76,19 +80,29 @@ export default function App() {
           style={{ opacity: loading ? 0.4 : 1, transition: 'opacity 0.2s' }}
         >
           <MapView
-            apartments={apartments}
+            apartments={visibleApartments}
             onEdit={handleEdit}
             onDelete={isOwner ? deleteApartment : () => {}}
+            onUpdate={updateApartment}
+            onArchive={id => updateApartment(id, { archived: true })}
             showList={panelOpen}
             listExpanded={panelExpanded}
             isOwner={isOwner}
+            focusApartmentId={focusAptId}
+            onFocusHandled={() => setFocusAptId(null)}
+            showArchived={showArchived}
+            onToggleShowArchived={() => setShowArchived(v => !v)}
           />
         </div>
 
         <ListView
-          apartments={apartments}
+          apartments={visibleApartments}
           onEdit={handleEdit}
           onDelete={isOwner ? deleteApartment : () => {}}
+          onArchive={id => updateApartment(id, { archived: true })}
+          onToggleFavorite={apt => updateApartment(apt.id, { favorited: !apt.favorited })}
+          onUpdate={updateApartment}
+          onFocusApartment={apt => setFocusAptId(apt.id)}
           show={view === 'list'}
           isExpanded={panelExpanded}
           onClose={() => { setView('map'); setPanelExpanded(false); }}
@@ -98,8 +112,9 @@ export default function App() {
 
         {isOwner && (
           <CalendarView
-            apartments={apartments}
+            apartments={calendarApartments}
             onEdit={handleEdit}
+            onFocusApartment={apt => setFocusAptId(apt.id)}
             blockedSlots={blockedSlots}
             onAddBlockedSlot={addBlockedSlot}
             onDeleteBlockedSlot={deleteBlockedSlot}

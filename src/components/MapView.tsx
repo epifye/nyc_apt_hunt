@@ -16,16 +16,18 @@ import {
   ExternalLink,
   Pencil,
   Trash2,
-  Sun,
-  UtensilsCrossed,
   WashingMachine,
   CalendarClock,
   Loader2,
   Layers,
+  Archive,
 } from "lucide-react";
+import ReviewSection from "./ReviewSection";
+import ApartmentRatings from "./ApartmentRatings";
 import { Apartment, TourStatus } from "../types";
 import { shortAddress } from "../utils/address";
 import ImageLightbox from "./ImageLightbox";
+import { WHOLE_FOODS_LOCATIONS } from "../data/wholeFoods";
 
 function useIsMobile() {
   const [v, setV] = useState(window.innerWidth < 640);
@@ -79,28 +81,39 @@ const STATUS_COLORS: Record<TourStatus, string> = {
   toured: "#16803A",
 };
 
-function createApartmentIcon(status: TourStatus, colorOverride?: string): L.DivIcon {
+function createApartmentIcon(status: TourStatus, colorOverride?: string, showBadge = true, selected = false): L.DivIcon {
   const color = colorOverride ?? STATUS_COLORS[status];
   const badge =
-    status === "pending_availability"
+    showBadge && status === "pending_availability"
       ? `<circle cx="23" cy="5" r="6" fill="#fff" stroke="#fff" stroke-width="1"/>
        <circle cx="23" cy="5" r="5" fill="#EA580C"/>
        <text x="23" y="8.5" text-anchor="middle" fill="white" font-size="7" font-weight="bold" font-family="sans-serif">!</text>`
       : "";
-  const svg = `<svg width="32" height="40" viewBox="0 0 32 40" xmlns="http://www.w3.org/2000/svg" class="apt-marker-pin">
+  const w = selected ? 42 : 32;
+  const h = selected ? 52 : 40;
+  const svg = `<svg width="${w}" height="${h}" viewBox="0 0 32 40" xmlns="http://www.w3.org/2000/svg" class="apt-marker-pin">
     <path d="M14 0C6.268 0 0 6.268 0 14c0 10.5 14 28 14 28S28 24.5 28 14C28 6.268 21.732 0 14 0z"
-      fill="${color}" stroke="white" stroke-width="2.5"/>
+      fill="${color}" stroke="white" stroke-width="${selected ? 2 : 2.5}"/>
     <circle cx="14" cy="14" r="5.5" fill="white" opacity="0.95"/>
     ${badge}
   </svg>`;
   return L.divIcon({
     className: "",
     html: svg,
-    iconSize: [32, 40],
-    iconAnchor: [14, 40],
-    popupAnchor: [0, -44],
+    iconSize: [w, h],
+    iconAnchor: [w / 2, h],
+    popupAnchor: [0, -h - 4],
   });
 }
+
+// ── Whole Foods icon ──────────────────────────────────────────────────────────
+
+const wholeFoodsIcon = L.icon({
+  iconUrl: `${import.meta.env.BASE_URL}whole-foods.png`,
+  iconSize: [26, 26],
+  iconAnchor: [13, 13],
+  tooltipAnchor: [13, 0],
+});
 
 // ── Subway data types ─────────────────────────────────────────────────────────
 
@@ -154,6 +167,28 @@ async function fetchSubwayData(): Promise<SubwayData> {
 
 // ── FlyTo helper ──────────────────────────────────────────────────────────────
 
+function flyToApt(
+  m: L.Map,
+  lat: number,
+  lng: number,
+  zoom: number,
+  isMobile: boolean,
+  panelOpen: boolean,
+  panelExpanded: boolean,
+  duration = 0.9,
+) {
+  const pt = m.project([lat, lng] as L.LatLngExpression, zoom);
+  let center: L.LatLng;
+  if (isMobile) {
+    center = m.unproject(pt.add([0, m.getSize().y / 3]), zoom);
+  } else if (panelOpen && !panelExpanded) {
+    center = m.unproject(pt.subtract([225, 0]), zoom);
+  } else {
+    center = m.unproject(pt, zoom);
+  }
+  m.flyTo(center, zoom, { duration });
+}
+
 // ── CARTO vector basemap ──────────────────────────────────────────────────────
 
 function CartoBasemap() {
@@ -176,6 +211,7 @@ function MapRefCapture({ mapRef }: { mapRef: React.MutableRefObject<L.Map | null
   useEffect(() => { mapRef.current = map; }, [map]);
   return null;
 }
+
 
 // ── Helper formatters ─────────────────────────────────────────────────────────
 
@@ -249,18 +285,25 @@ interface Props {
   apartments: Apartment[];
   onEdit: (apt: Apartment) => void;
   onDelete: (id: string) => void;
+  onUpdate: (id: string, updates: Partial<Apartment>) => void;
+  onArchive: (id: string) => void;
   showList: boolean;
   listExpanded: boolean;
   isOwner: boolean;
+  focusApartmentId?: string | null;
+  onFocusHandled?: () => void;
+  showArchived: boolean;
+  onToggleShowArchived: () => void;
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function MapView({ apartments, onEdit, onDelete, showList, listExpanded, isOwner }: Props) {
+export default function MapView({ apartments, onEdit, onDelete, onUpdate, onArchive, showList, listExpanded, isOwner, focusApartmentId, onFocusHandled, showArchived, onToggleShowArchived }: Props) {
   const isMobile = useIsMobile();
   const [subwayData, setSubwayData] = useState<SubwayData | null>(null);
   const [subwayLoading, setSubwayLoading] = useState(true);
   const [showSubway, setShowSubway] = useState(true);
+  const [showWholeFoods, setShowWholeFoods] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -270,6 +313,7 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
     if (showList) {
       savedSelectedId.current = selectedId;
       setSelectedId(null);
+      setReviewEditing(false);
     } else if (savedSelectedId.current) {
       setSelectedId(savedSelectedId.current);
       savedSelectedId.current = null;
@@ -277,6 +321,23 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
   }, [showList]);
 
   const selectedApt = apartments.find((a) => a.id === selectedId) ?? null;
+  const [reviewEditing, setReviewEditing]   = useState(false);
+  const [ratingEditing, setRatingEditing]   = useState(false);
+
+  useEffect(() => { setReviewEditing(false); setRatingEditing(false); }, [selectedId]);
+
+  useEffect(() => {
+    if (!focusApartmentId) return;
+    const apt = apartments.find(a => a.id === focusApartmentId);
+    if (!apt) return;
+    setSelectedId(focusApartmentId);
+    const m = mapRef.current;
+    if (m) {
+      const zoom = Math.max(m.getZoom(), 15);
+      flyToApt(m, apt.lat, apt.lng, zoom, isMobile, showList, listExpanded, 1.0);
+    }
+    onFocusHandled?.();
+  }, [focusApartmentId]);
 
   useEffect(() => {
     fetchSubwayData()
@@ -372,6 +433,20 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
             </CircleMarker>
           ))}
 
+        {/* Whole Foods markers */}
+        {showWholeFoods && WHOLE_FOODS_LOCATIONS.map((wf, i) => (
+          <Marker key={`wf-${i}`} position={[wf.lat, wf.lng]} icon={wholeFoodsIcon}>
+            <Tooltip direction="top" offset={[0, -13]} opacity={0.95}>
+              <div style={{ fontFamily: "Figtree, sans-serif", fontSize: 12, fontWeight: 600 }}>
+                🛒 Whole Foods
+              </div>
+              <div style={{ fontFamily: "Figtree, sans-serif", fontSize: 11, color: "#666" }}>
+                {wf.address}
+              </div>
+            </Tooltip>
+          </Marker>
+        ))}
+
         {/* Apartment markers */}
         {apartments.map((apt) => (
           <Marker
@@ -379,7 +454,9 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
             position={[apt.lat, apt.lng]}
             icon={createApartmentIcon(
               apt.tourStatus,
-              !isOwner && apt.tourStatus !== 'toured' ? '#9CA3AF' : undefined
+              !isOwner && apt.tourStatus !== 'toured' ? '#9CA3AF' : undefined,
+              isOwner,
+              selectedId === apt.id
             )}
             eventHandlers={{
               click: () => {
@@ -388,14 +465,7 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
                   const m = mapRef.current;
                   if (m) {
                     const zoom = Math.max(m.getZoom(), 15);
-                    if (isMobile) {
-                      const offsetPx = m.getSize().y / 3;
-                      const pt = m.project([apt.lat, apt.lng], zoom);
-                      const newCenter = m.unproject(pt.add([0, offsetPx]), zoom);
-                      m.flyTo(newCenter, zoom, { duration: 0.8 });
-                    } else {
-                      m.flyTo([apt.lat, apt.lng], zoom, { duration: 0.8 });
-                    }
+                    flyToApt(m, apt.lat, apt.lng, zoom, isMobile, showList, listExpanded);
                   }
                   return apt.id;
                 });
@@ -448,6 +518,37 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
           ))}
         </div>
 
+        {/* Archived toggle — owner only */}
+        {isOwner && (
+          <button
+            onClick={onToggleShowArchived}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all"
+            style={{
+              background: showArchived ? "#6B7280" : "var(--surface)",
+              color: showArchived ? "#fff" : "var(--text-2)",
+              border: `1.5px solid ${showArchived ? "#6B7280" : "var(--border)"}`,
+              boxShadow: "0 2px 8px rgba(26,21,18,0.12)",
+            }}
+          >
+            <Archive size={12} />
+            {showArchived ? "Archived ON" : "Archived"}
+          </button>
+        )}
+
+        {/* Whole Foods toggle */}
+        <button
+          onClick={() => setShowWholeFoods((v) => !v)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all"
+          style={{
+            background: showWholeFoods ? "#00674B" : "var(--surface)",
+            color: showWholeFoods ? "#fff" : "var(--text-2)",
+            border: `1.5px solid ${showWholeFoods ? "#00674B" : "var(--border)"}`,
+            boxShadow: "0 2px 8px rgba(26,21,18,0.12)",
+          }}
+        >
+          🛒 {showWholeFoods ? "WF ON" : "WF OFF"}
+        </button>
+
         {/* Subway toggle */}
         <button
           onClick={() => setShowSubway((v) => !v)}
@@ -498,8 +599,9 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
 
       {/* ── Legend ── */}
       <div
-        className="absolute bottom-6 z-[1000]"
+        className="absolute z-[1000]"
         style={{
+          bottom: 24,
           left: showList && !listExpanded ? 'calc(450px + 12px)' : 12,
           transition: 'left 0.32s cubic-bezier(0.4,0,0.2,1)',
         }}
@@ -556,9 +658,10 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
             border: '1px solid var(--border)',
             borderBottom: 'none',
             boxShadow: '0 -8px 32px rgba(26,21,18,0.18)',
-            height: '66%',
-            overflowY: 'auto',
-            overflowX: 'hidden',
+            height: (reviewEditing || ratingEditing) ? '100%' : (isOwner ? '66%' : '80%'),
+            overflow: 'hidden',
+            display: 'flex', flexDirection: 'column',
+            transition: 'height 0.32s cubic-bezier(0.32, 0.72, 0, 1)',
           } : {
             top: 12, right: 12,
             width: 288,
@@ -567,8 +670,16 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
             background: 'var(--surface)',
             border: '1px solid var(--border)',
             boxShadow: '0 12px 40px rgba(26,21,18,0.14)',
+            maxHeight: 'min(640px, 85vh)',
+            display: 'flex', flexDirection: 'column',
           }}
         >
+          {/* ── Apt info ── owner: fills panel + scrolls; non-owner: fixed, ReviewSection fills rest ── */}
+          <div style={isOwner
+            ? { flex: 1, minHeight: 0, overflowY: 'auto' }
+            : { flexShrink: 0, overflowY: 'auto' }
+          }>
+
           {/* Mobile drag handle */}
           {isMobile && (
             <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 10, paddingBottom: 4 }}>
@@ -643,58 +754,6 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
               )}
             </div>
 
-            {/* Meters */}
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <Sun
-                  size={12}
-                  style={{ color: "var(--amber)", flexShrink: 0 }}
-                />
-                <div
-                  className="flex-1 h-1.5 rounded-full overflow-hidden"
-                  style={{ background: "var(--border)" }}
-                >
-                  <div
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${selectedApt.sunlight * 10}%`,
-                      background: "var(--amber)",
-                    }}
-                  />
-                </div>
-                <span
-                  className="text-[11px] tabular-nums w-5 text-right"
-                  style={{ color: "var(--text-3)" }}
-                >
-                  {selectedApt.sunlight}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <UtensilsCrossed
-                  size={12}
-                  style={{ color: "#EA580C", flexShrink: 0 }}
-                />
-                <div
-                  className="flex-1 h-1.5 rounded-full overflow-hidden"
-                  style={{ background: "var(--border)" }}
-                >
-                  <div
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${selectedApt.kitchenUsable * 10}%`,
-                      background: "#EA580C",
-                    }}
-                  />
-                </div>
-                <span
-                  className="text-[11px] tabular-nums w-5 text-right"
-                  style={{ color: "var(--text-3)" }}
-                >
-                  {selectedApt.kitchenUsable}
-                </span>
-              </div>
-            </div>
-
             {/* Tour status */}
             {isOwner && selectedApt.tourStatus === "upcoming" && selectedApt.tourDate ? (
               <div
@@ -754,7 +813,7 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
             {(selectedApt.listingImageUrls?.length || selectedApt.listingImageUrl) && (
               <MapListingCarousel
                 urls={selectedApt.listingImageUrls ?? (selectedApt.listingImageUrl ? [selectedApt.listingImageUrl] : [])}
-                imgHeight={isMobile ? 180 : 140}
+                imgHeight={isMobile ? 120 : 140}
               />
             )}
 
@@ -792,6 +851,24 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
               )}
               <div className="ml-auto flex gap-1">
                 {isOwner && <button
+                  onClick={() => {
+                    onArchive(selectedApt.id);
+                    setSelectedId(null);
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 text-[12px] font-medium rounded-md transition-all"
+                  style={{ color: "var(--text-3)" }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "var(--surface-2)";
+                    e.currentTarget.style.color = "#6B7280";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "transparent";
+                    e.currentTarget.style.color = "var(--text-3)";
+                  }}
+                >
+                  <Archive size={11} /> Archive
+                </button>}
+              {isOwner && <button
                   onClick={() => {
                     onEdit(selectedApt);
                     setSelectedId(null);
@@ -850,6 +927,27 @@ export default function MapView({ apartments, onEdit, onDelete, showList, listEx
               </div>
             </div>
           </div>
+
+          {/* ── Ratings — owner only ── */}
+          {isOwner && (
+            <ApartmentRatings
+              apartment={selectedApt}
+              isOwner
+              onUpdate={updates => onUpdate(selectedApt.id, updates)}
+              onEditingChange={isMobile ? setRatingEditing : undefined}
+            />
+          )}
+
+          </div>{/* end apt info wrapper */}
+
+          {/* ── Reviews (fills remaining space, scrolls independently) ── */}
+          {!isOwner && (
+            <ReviewSection
+              apartmentId={selectedApt.id}
+              isOwner={false}
+              onEditingChange={isMobile ? setReviewEditing : undefined}
+            />
+          )}
         </div>
       )}
     </div>

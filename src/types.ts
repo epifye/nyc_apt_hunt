@@ -8,6 +8,14 @@ export interface BlockedSlot {
   label?: string;
   createdAt: string;
 }
+export interface Review {
+  id: string;
+  apartmentId: string;
+  reviewerName: string;
+  emojis: string;
+  createdAt: string;
+}
+
 export type AppView = 'map' | 'list' | 'calendar';
 export type ApartmentType = 'studio' | '1br' | '2br' | '3br+';
 
@@ -31,5 +39,12 @@ export interface Apartment {
   listingImageUrls?: string[];
   listingUrl?: string;
   tentativeTourDate?: string;
+  favorited?: boolean;
+  archived?: boolean;
+  roominess?: number;
+  location?: number;
+  transportation?: number;
+  vibe?: number;
+  likeIt?: number;
   createdAt: string;
 }

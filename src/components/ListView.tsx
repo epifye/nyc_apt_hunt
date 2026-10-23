@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
+import ReviewSection from './ReviewSection';
 import {
-  X, Maximize2, Minimize2, Sun, UtensilsCrossed, WashingMachine,
+  X, Maximize2, Minimize2, WashingMachine,
   ExternalLink, Pencil, Trash2, CalendarClock, CheckCircle2,
   Clock, MessageSquareOff, KeyRound, Users, ArrowUpDown,
-  LayoutList, AlignJustify, ImageOff,
+  LayoutList, AlignJustify, Heart, Archive,
 } from 'lucide-react';
+import ApartmentRatings from './ApartmentRatings';
 import { Apartment, TourStatus } from '../types';
 import { shortAddress } from '../utils/address';
 import ImageLightbox from './ImageLightbox';
 
-type SortKey = 'monthlyCost' | 'sunlight' | 'kitchenUsable' | 'tourDate' | 'neighborhood' | 'createdAt';
+type SortKey = 'monthlyCost' | 'sunlight' | 'kitchenUsable' | 'tourDate' | 'neighborhood' | 'createdAt' | 'favorites';
 type SortDir = 'asc' | 'desc';
 
 function useIsMobile() {
@@ -26,6 +28,10 @@ interface Props {
   apartments: Apartment[];
   onEdit: (apt: Apartment) => void;
   onDelete: (id: string) => void;
+  onArchive: (id: string) => void;
+  onToggleFavorite: (apt: Apartment) => void;
+  onUpdate: (id: string, updates: Partial<Apartment>) => void;
+  onFocusApartment?: (apt: Apartment) => void;
   show: boolean;
   isExpanded: boolean;
   onClose: () => void;
@@ -49,6 +55,7 @@ function visibleStatus(apt: { tourStatus: TourStatus }, isOwner: boolean) {
 
 const SORT_OPTIONS_OWNER: { key: SortKey; label: string }[] = [
   { key: 'tourDate',      label: 'Tour date' },
+  { key: 'favorites',     label: '♥ Favorites' },
   { key: 'createdAt',     label: 'Added' },
   { key: 'monthlyCost',   label: 'Rent' },
   { key: 'sunlight',      label: 'Sunlight' },
@@ -159,13 +166,16 @@ interface CompactRowProps {
   apt: Apartment;
   onEdit: (apt: Apartment) => void;
   onDelete: (id: string) => void;
+  onArchive: (id: string) => void;
+  onToggleFavorite: (apt: Apartment) => void;
+  onFocusApartment?: (apt: Apartment) => void;
   confirming: boolean;
   onConfirm: () => void;
   onCancelConfirm: () => void;
   isOwner: boolean;
 }
 
-function CompactRow({ apt, onEdit, onDelete, confirming, onConfirm, onCancelConfirm, isOwner }: CompactRowProps) {
+function CompactRow({ apt, onEdit, onDelete, onArchive, onToggleFavorite, onFocusApartment, confirming, onConfirm, onCancelConfirm, isOwner }: CompactRowProps) {
   const status = visibleStatus(apt, isOwner);
   const [hovered, setHovered] = useState(false);
 
@@ -179,6 +189,7 @@ function CompactRow({ apt, onEdit, onDelete, confirming, onConfirm, onCancelConf
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={e => { if (!(e.target as HTMLElement).closest('button, a')) onFocusApartment?.(apt); }}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -190,6 +201,7 @@ function CompactRow({ apt, onEdit, onDelete, confirming, onConfirm, onCancelConf
         paddingRight: 8,
         gap: 8,
         transition: 'background 0.1s',
+        cursor: onFocusApartment ? 'pointer' : 'default',
       }}
     >
       {/* Address + neighborhood */}
@@ -242,50 +254,70 @@ function CompactRow({ apt, onEdit, onDelete, confirming, onConfirm, onCancelConf
       )}
 
       {/* Actions — owner only */}
-      {isOwner && <div style={{ display: 'flex', gap: 1, flexShrink: 0, opacity: hovered || confirming ? 1 : 0, transition: 'opacity 0.15s' }}>
-        {confirming ? (
-          <>
-            <button
-              onClick={() => { onDelete(apt.id); onCancelConfirm(); }}
-              style={{ ...actionBtn, background: 'var(--red)', color: '#fff', width: 'auto', padding: '0 7px', fontSize: 11, fontWeight: 600, borderRadius: 6 }}
-            >
-              Delete
-            </button>
-            <button
-              onClick={onCancelConfirm}
-              style={{ ...actionBtn, color: 'var(--text-3)', fontSize: 11 }}
-            >
-              ✕
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              onClick={() => onEdit(apt)}
-              style={{ ...actionBtn, color: 'var(--text-3)' }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.color = 'var(--accent)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; }}
-            >
-              <Pencil size={11} />
-            </button>
-            <button
-              onClick={onConfirm}
-              style={{ ...actionBtn, color: 'var(--text-3)' }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'var(--red-light)'; e.currentTarget.style.color = 'var(--red)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; }}
-            >
-              <Trash2 size={11} />
-            </button>
-          </>
-        )}
-      </div>}
+      {isOwner && (
+        <div style={{ display: 'flex', gap: 1, flexShrink: 0, alignItems: 'center' }}>
+          <button
+            onClick={() => onToggleFavorite(apt)}
+            style={{ ...actionBtn, color: apt.favorited ? '#E11D48' : 'var(--text-3)',
+              opacity: apt.favorited ? 1 : (hovered ? 1 : 0), transition: 'opacity 0.15s, color 0.15s' }}
+          >
+            <Heart size={11} fill={apt.favorited ? '#E11D48' : 'none'} />
+          </button>
+          <div style={{ opacity: hovered || confirming ? 1 : 0, transition: 'opacity 0.15s', display: 'flex', gap: 1 }}>
+            {confirming ? (
+              <>
+                <button
+                  onClick={() => { onDelete(apt.id); onCancelConfirm(); }}
+                  style={{ ...actionBtn, background: 'var(--red)', color: '#fff', width: 'auto', padding: '0 7px', fontSize: 11, fontWeight: 600, borderRadius: 6 }}
+                >
+                  Delete
+                </button>
+                <button
+                  onClick={onCancelConfirm}
+                  style={{ ...actionBtn, color: 'var(--text-3)', fontSize: 11 }}
+                >
+                  ✕
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => onArchive(apt.id)}
+                  style={{ ...actionBtn, color: 'var(--text-3)' }}
+                  title="Archive"
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.color = '#6B7280'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; }}
+                >
+                  <Archive size={11} />
+                </button>
+                <button
+                  onClick={() => onEdit(apt)}
+                  style={{ ...actionBtn, color: 'var(--text-3)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; }}
+                >
+                  <Pencil size={11} />
+                </button>
+                <button
+                  onClick={onConfirm}
+                  style={{ ...actionBtn, color: 'var(--text-3)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--red-light)'; e.currentTarget.style.color = 'var(--red)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; }}
+                >
+                  <Trash2 size={11} />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ListView({ apartments, onEdit, onDelete, show, isExpanded, onClose, onToggleExpand, isOwner }: Props) {
+export default function ListView({ apartments, onEdit, onDelete, onArchive, onToggleFavorite, onUpdate, onFocusApartment, show, isExpanded, onClose, onToggleExpand, isOwner }: Props) {
   const isMobile = useIsMobile();
   const [sortKey, setSortKey]         = useState<SortKey>(isOwner ? 'tourDate' : 'monthlyCost');
   const [sortDir, setSortDir]         = useState<SortDir>('asc');
@@ -316,12 +348,17 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
       return a.tourStatus === filterStatus;
     })
     .sort((a, b) => {
+      if (sortKey === 'favorites') {
+        const fa = a.favorited ? 0 : 1;
+        const fb = b.favorited ? 0 : 1;
+        if (fa !== fb) return fa - fb;
+        return a.createdAt < b.createdAt ? -1 : 1;
+      }
       let va: number | string = 0, vb: number | string = 0;
       switch (sortKey) {
         case 'monthlyCost':   va = a.monthlyCost;               vb = b.monthlyCost; break;
         case 'sunlight':      va = a.sunlight;                  vb = b.sunlight; break;
         case 'kitchenUsable': va = a.kitchenUsable;             vb = b.kitchenUsable; break;
-        // Nulls always sort last regardless of direction
         case 'tourDate':      va = a.tourDate || '￿';      vb = b.tourDate || '￿'; break;
         case 'neighborhood':  va = a.neighborhood.toLowerCase(); vb = b.neighborhood.toLowerCase(); break;
         case 'createdAt':     va = a.createdAt;                 vb = b.createdAt; break;
@@ -464,6 +501,9 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
                 apt={apt}
                 onEdit={onEdit}
                 onDelete={onDelete}
+                onArchive={onArchive}
+                onToggleFavorite={onToggleFavorite}
+                onFocusApartment={onFocusApartment}
                 confirming={confirmDeleteId === apt.id}
                 onConfirm={() => setConfirm(apt.id)}
                 onCancelConfirm={() => setConfirm(null)}
@@ -506,10 +546,15 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
                       </span>
                     </div>
 
-                    {/* Address */}
-                    <p style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.35, color: 'var(--text-1)',
-                      margin: '0 0 10px', overflow: 'hidden', display: '-webkit-box',
-                      WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    {/* Address — click to focus on map */}
+                    <p
+                      onClick={() => onFocusApartment?.(apt)}
+                      style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.35, color: 'var(--text-1)',
+                        margin: '0 0 10px', overflow: 'hidden', display: '-webkit-box',
+                        WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                        cursor: onFocusApartment ? 'pointer' : 'default' }}
+                      title={onFocusApartment ? 'View on map' : undefined}
+                    >
                       {shortAddress(apt.address, apt.aptNumber)}
                     </p>
 
@@ -531,20 +576,6 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
                           <WashingMachine size={10} /> Laundry
                         </span>
                       )}
-                    </div>
-
-                    {/* Inline ratings */}
-                    <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
-                        <Sun size={12} style={{ color: 'var(--amber)' }} />
-                        <span style={{ fontWeight: 600, color: 'var(--amber)' }}>{apt.sunlight}</span>
-                        <span style={{ color: 'var(--text-3)' }}>/10</span>
-                      </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
-                        <UtensilsCrossed size={12} style={{ color: '#EA580C' }} />
-                        <span style={{ fontWeight: 600, color: '#EA580C' }}>{apt.kitchenUsable}</span>
-                        <span style={{ color: 'var(--text-3)' }}>/10</span>
-                      </span>
                     </div>
 
                     {/* Listing image */}
@@ -599,7 +630,31 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
                         <ExternalLink size={11} /> Listing
                       </a>
                     )}
-                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 3 }}>
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 3, alignItems: 'center' }}>
+                      {isOwner && (
+                        <button
+                          onClick={() => onToggleFavorite(apt)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px',
+                            borderRadius: 6, fontSize: 11, fontWeight: 500, border: 'none', cursor: 'pointer',
+                            background: apt.favorited ? '#FFF1F2' : 'transparent',
+                            color: apt.favorited ? '#E11D48' : 'var(--text-3)', transition: 'all 0.12s' }}
+                          onMouseEnter={e => { if (!apt.favorited) { e.currentTarget.style.background = '#FFF1F2'; e.currentTarget.style.color = '#E11D48'; }}}
+                          onMouseLeave={e => { if (!apt.favorited) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; }}}
+                        >
+                          <Heart size={10} fill={apt.favorited ? '#E11D48' : 'none'} />
+                          {apt.favorited ? 'Favorited' : 'Favorite'}
+                        </button>
+                      )}
+                      {isOwner && <button
+                        onClick={() => onArchive(apt.id)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px',
+                          borderRadius: 6, fontSize: 11, fontWeight: 500, border: 'none', cursor: 'pointer',
+                          background: 'transparent', color: 'var(--text-3)', transition: 'all 0.12s' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = '#6B7280'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; }}
+                      >
+                        <Archive size={10} /> Archive
+                      </button>}
                       {isOwner && <button
                         onClick={() => onEdit(apt)}
                         style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px',
@@ -641,6 +696,20 @@ export default function ListView({ apartments, onEdit, onDelete, show, isExpande
                       ) : null}
                     </div>
                   </div>
+
+                  {/* Ratings — owner only */}
+                  {isOwner && (
+                    <ApartmentRatings
+                      apartment={apt}
+                      isOwner
+                      onUpdate={updates => onUpdate(apt.id, updates)}
+                    />
+                  )}
+
+                  {/* Reviews — public only, collapsed by default */}
+                  {!isOwner && (
+                    <ReviewSection apartmentId={apt.id} isOwner={false} listMode />
+                  )}
                 </div>
               );
             })}

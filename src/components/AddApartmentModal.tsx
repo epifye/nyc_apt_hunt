@@ -107,8 +107,8 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
   const [type,         setType]         = useState<ApartmentType>(apt?.type ?? 'studio');
   const [laundry,      setLaundry]      = useState(apt?.laundry ?? false);
   const [monthlyCost,  setMonthlyCost]  = useState(apt?.monthlyCost ? String(apt.monthlyCost) : '');
-  const [sunlight,     setSunlight]     = useState(apt?.sunlight ?? 5);
-  const [kitchen,      setKitchen]      = useState(apt?.kitchenUsable ?? 5);
+  const [sunlight,     setSunlight]     = useState(apt?.sunlight ?? 0);
+  const [kitchen,      setKitchen]      = useState(apt?.kitchenUsable ?? 0);
   const [tourStatus,   setTourStatus]   = useState<TourStatus>(apt?.tourStatus ?? 'not_contacted');
   const [tourDate,          setTourDate]          = useState(apt?.tourDate ?? '');
   const [tentativeTourDate, setTentativeTourDate] = useState(apt?.tentativeTourDate ?? '');
@@ -143,16 +143,9 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
       if (data.monthlyCost)     setMonthlyCost(String(data.monthlyCost));
       if (data.type)          setType(data.type);
       if (data.laundry)       setLaundry(data.laundry);
-      if (data.notes)         setNotes(data.notes);
       if (data.availableDate) setAvailableDate(data.availableDate);
       if (data.neighborhood)  setNeighborhood(data.neighborhood);
       if (data.listingUrl)    setListingUrl(data.listingUrl);
-
-      const desc = (data.notes ?? '').toLowerCase();
-      if (['south facing','south-facing','sunlight','sunlit','sun-filled','sun filled','sun drenched','sun-drenched','sunny'].some(k => desc.includes(k)))
-        setSunlight(8);
-      if (['new kitchen','stainless','renovated kitchen','updated kitchen','modern kitchen',"chef's kitchen",'chefs kitchen','gut renovated'].some(k => desc.includes(k)))
-        setKitchen(8);
 
       setSeFilled(true);
       setGeocoded(false);
@@ -211,6 +204,11 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
       notes,
       listingUrl: listingUrl.trim() || undefined,
       listingImageUrls: listingImageUrls.length ? listingImageUrls : undefined,
+      roominess: apt?.roominess,
+      location: apt?.location,
+      transportation: apt?.transportation,
+      vibe: apt?.vibe,
+      likeIt: apt?.likeIt,
     });
     onClose();
   };
@@ -414,30 +412,6 @@ export default function AddApartmentModal({ onClose, onSave, editingApartment }:
                 onChange={e => setAvailableDate(e.target.value)}
               />
             </div>
-
-            <div style={{ borderTop: '1px solid var(--border)' }} />
-
-            {/* Sunlight */}
-            <div>
-              <div className="flex justify-between items-baseline mb-2">
-                <Label>☀️ Sunlight</Label>
-                <span className="text-[13px] font-bold tabular-nums" style={{ color: 'var(--amber)' }}>{sunlight}/10</span>
-              </div>
-              <input type="range" min="0" max="10" value={sunlight}
-                onChange={e => setSunlight(parseInt(e.target.value))} className="slider-amber" />
-            </div>
-
-            {/* Kitchen */}
-            <div>
-              <div className="flex justify-between items-baseline mb-2">
-                <Label>🍳 Kitchen Usability</Label>
-                <span className="text-[13px] font-bold tabular-nums" style={{ color: '#EA580C' }}>{kitchen}/10</span>
-              </div>
-              <input type="range" min="0" max="10" value={kitchen}
-                onChange={e => setKitchen(parseInt(e.target.value))} className="slider-orange" />
-            </div>
-
-            <div style={{ borderTop: '1px solid var(--border)' }} />
 
             {/* Tour status */}
             <div>

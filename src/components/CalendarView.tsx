@@ -58,7 +58,7 @@ function formatTime(hour: number, min: number) {
 }
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 }
 
 const selectStyle: React.CSSProperties = {
@@ -75,6 +75,7 @@ const selectStyle: React.CSSProperties = {
 interface Props {
   apartments: Apartment[];
   onEdit: (apt: Apartment) => void;
+  onFocusApartment: (apt: Apartment) => void;
   blockedSlots: BlockedSlot[];
   onAddBlockedSlot: (data: Omit<BlockedSlot, 'id' | 'createdAt'>) => Promise<void>;
   onDeleteBlockedSlot: (id: string) => Promise<void>;
@@ -85,7 +86,7 @@ interface Props {
 }
 
 export default function CalendarView({
-  apartments, onEdit,
+  apartments, onEdit, onFocusApartment,
   blockedSlots, onAddBlockedSlot, onDeleteBlockedSlot,
   show, isExpanded, onClose, onToggleExpand,
 }: Props) {
@@ -527,55 +528,103 @@ export default function CalendarView({
               );
             })}
 
-            {/* Tour event blocks */}
-            {dayApts.map(apt => {
-              const isTentative = apt.tourStatus === 'pending_availability';
-              const parsed = parseTourDate(getEventDate(apt))!;
-              const { hour, min } = parsed;
-              const clampedH = Math.max(GRID_START_H, Math.min(GRID_END_H - 1, hour));
-              const topPx = ((clampedH - GRID_START_H) * 60 + min) * (HOUR_PX / 60);
-              const heightPx = DEFAULT_DURATION_MIN * (HOUR_PX / 60);
-              const s = STATUS_STYLE[apt.tourStatus];
+            {/* Tour event blocks — with overlap column layout */}
+            {(() => {
+              // Assign columns to overlapping events
+              const sorted = [...dayApts].sort((a, b) => {
+                const pa = parseTourDate(getEventDate(a))!;
+                const pb = parseTourDate(getEventDate(b))!;
+                return (pa.hour * 60 + pa.min) - (pb.hour * 60 + pb.min);
+              });
 
-              return (
-                <div
-                  key={apt.id}
-                  onClick={() => onEdit(apt)}
-                  title={isTentative ? 'Tentative — click to confirm' : 'Click to edit'}
-                  style={{
-                    position: 'absolute',
-                    top: topPx,
-                    left: TIME_COL_W + 4,
-                    right: 12,
-                    height: heightPx,
-                    minHeight: 28,
-                    background: s.bg,
-                    borderLeft: `3px ${isTentative ? 'dashed' : 'solid'} ${s.border}`,
-                    borderRadius: '0 8px 8px 0',
-                    padding: '4px 10px',
-                    cursor: 'pointer',
-                    overflow: 'hidden',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'center',
-                    boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-                    opacity: isTentative ? 0.85 : 1,
-                    zIndex: 5,
-                    transition: 'filter 0.12s',
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.filter = 'brightness(0.95)')}
-                  onMouseLeave={e => (e.currentTarget.style.filter = '')}
-                >
-                  <div style={{ fontSize: 12, fontWeight: 700, color: s.text,
-                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3 }}>
-                    {shortAddress(apt.address, apt.aptNumber)}
+              const colEnds: number[] = [];
+              const colOf = new Map<string, number>();
+              for (const apt of sorted) {
+                const p = parseTourDate(getEventDate(apt))!;
+                const startMin = p.hour * 60 + p.min;
+                let col = 0;
+                while (colEnds[col] !== undefined && colEnds[col] > startMin) col++;
+                colEnds[col] = startMin + DEFAULT_DURATION_MIN;
+                colOf.set(apt.id, col);
+              }
+
+              // For each event, count concurrent overlaps to get totalCols
+              const totalColsOf = new Map<string, number>();
+              for (const apt of sorted) {
+                const p = parseTourDate(getEventDate(apt))!;
+                const startMin = p.hour * 60 + p.min;
+                const endMin   = startMin + DEFAULT_DURATION_MIN;
+                let maxCol = 0;
+                for (const other of sorted) {
+                  const op = parseTourDate(getEventDate(other))!;
+                  const os = op.hour * 60 + op.min;
+                  const oe = os + DEFAULT_DURATION_MIN;
+                  if (os < endMin && oe > startMin) maxCol = Math.max(maxCol, colOf.get(other.id)!);
+                }
+                totalColsOf.set(apt.id, maxCol + 1);
+              }
+
+              const TRACK_LEFT = TIME_COL_W + 4;
+              const TRACK_RIGHT = 12;
+
+              return sorted.map(apt => {
+                const isTentative = apt.tourStatus === 'pending_availability';
+                const parsed = parseTourDate(getEventDate(apt))!;
+                const { hour, min } = parsed;
+                const clampedH = Math.max(GRID_START_H, Math.min(GRID_END_H - 1, hour));
+                const topPx    = ((clampedH - GRID_START_H) * 60 + min) * (HOUR_PX / 60);
+                const heightPx = DEFAULT_DURATION_MIN * (HOUR_PX / 60);
+                const s        = STATUS_STYLE[apt.tourStatus];
+                const col      = colOf.get(apt.id)!;
+                const total    = totalColsOf.get(apt.id)!;
+                const GAP      = 2;
+
+                // CSS calc for columnar layout within track area
+                const trackW   = `(100% - ${TRACK_LEFT + TRACK_RIGHT}px)`;
+                const colW     = `(${trackW} / ${total})`;
+                const leftCalc = `calc(${TRACK_LEFT}px + ${col} * ${colW} + ${col > 0 ? GAP : 0}px)`;
+                const widthCalc= `calc(${colW} - ${col > 0 ? GAP : 0}px - ${col < total - 1 ? GAP : 0}px)`;
+
+                return (
+                  <div
+                    key={apt.id}
+                    onClick={() => onFocusApartment(apt)}
+                    title={isTentative ? 'Tentative — click to confirm' : 'Click to edit'}
+                    style={{
+                      position: 'absolute',
+                      top: topPx,
+                      left: leftCalc,
+                      width: widthCalc,
+                      height: heightPx,
+                      minHeight: 28,
+                      background: s.bg,
+                      borderLeft: `3px ${isTentative ? 'dashed' : 'solid'} ${s.border}`,
+                      borderRadius: '0 8px 8px 0',
+                      padding: '4px 8px',
+                      cursor: 'pointer',
+                      overflow: 'hidden',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'center',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+                      opacity: isTentative ? 0.85 : 1,
+                      zIndex: 5,
+                      transition: 'filter 0.12s',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.filter = 'brightness(0.95)')}
+                    onMouseLeave={e => (e.currentTarget.style.filter = '')}
+                  >
+                    <div style={{ fontSize: 12, fontWeight: 700, color: s.text,
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3 }}>
+                      {shortAddress(apt.address, apt.aptNumber)}
+                    </div>
+                    <div style={{ fontSize: 11, color: s.subtext, lineHeight: 1.2 }}>
+                      {formatTime(hour, min)} · {isTentative ? 'Tentative' : apt.neighborhood}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 11, color: s.subtext, lineHeight: 1.2 }}>
-                    {formatTime(hour, min)} · {isTentative ? 'Tentative' : apt.neighborhood}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
         </div>
       )}
